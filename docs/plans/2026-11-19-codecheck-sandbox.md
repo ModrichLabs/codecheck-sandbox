@@ -11,9 +11,10 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** the bootstrap pull request (#1) into `main`.
 - **In progress:** M2, the system layer (`internal/system`), on branch
-  `feat/system-layer` in its own worktree. `runner.go`, `fake.go` and
-  `privilege.go` done (`fake.go` moved ahead, since the privilege tests need
-  it); next comes `fs.go`. One PR covers M2 once every task ticks.
+  `feat/system-layer` in its own worktree. `runner.go`, `fake.go`,
+  `privilege.go` and `fs.go` done (`fake.go` moved ahead, since the privilege
+  tests need it); next comes `keepalive.go`. One PR covers M2 once every task
+  ticks.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -207,8 +208,10 @@ of repeating them.
       by an argv prefix. It panics on any unexpected call, so tests fail loudly.
   - _Done:_ `On(prefix...).Return(res)` or `.Fail(err)`; each script answers
     once, in the order added; `Calls()` and `Pending()` support assertions.
-- [ ] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
+- [x] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
       `OSFS` and a `MemFS` for tests.
+  - _Done:_ one contract test runs against both; errors match the `os`
+    package's, so `errors.Is(err, fs.ErrNotExist)` works on either.
 - [ ] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
       the context ends, and reports the first failure on a channel. Tested with
       a fake clock.
