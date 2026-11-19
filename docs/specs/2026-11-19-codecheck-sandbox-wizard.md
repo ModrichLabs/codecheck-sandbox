@@ -14,8 +14,8 @@ Firecracker microVM whose only network path leads to a proxy that allows
 Anthropic's API alone. By hand, that takes about 40 steps across five phases and
 fits only one Arch laptop. This design turns it into one Go binary with a modern
 terminal interface. It guides a person through setup, checks and installs what
-is missing, collects what it needs, and runs reviews afterwards, on any Linux
-machine with KVM.
+has gone missing, collects what it needs, and runs reviews afterwards, on any
+Linux machine with KVM.
 
 **Decisions made with the maintainer**
 
@@ -309,7 +309,7 @@ transaction.
 - **`selftest`, `canary`, `rebuild [--commit]`:** as described above.
 - **`doctor --bundle`** and **`telemetry on|off|status`:** see §11.
 - **`--yes`:** reads the key from `CODECHECK_API_KEY` (never a flag) and the
-  other answers from flags or `config.toml`; it refuses to run if an answer is
+  other answers from flags or `config.toml`; it refuses to run if an answer goes
   missing. `--dry-run` changes nothing.
 - **`uninstall`:**
   - Reverses the code-defined footprint, using the root-owned manifest as hints

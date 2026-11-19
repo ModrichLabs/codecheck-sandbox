@@ -17,8 +17,10 @@ Include what you can of:
 - steps or a proof of concept to reproduce it;
 - the codecheck-sandbox version (`codecheck-sandbox version`), Linux
   distribution and kernel version;
-- any logs, with secrets removed. `codecheck-sandbox doctor --bundle` redacts
-  the API key, but please check the bundle before sharing it.
+- any logs, with secrets removed. Logs live in
+  `~/.local/state/codecheck-sandbox/log/` with the API key redacted; please
+  check them before sharing. (A `doctor --bundle` command that packs them for
+  you comes in a later release.)
 
 We aim to acknowledge a report within five business days, agree on a fix and a
 disclosure date with you, and credit you in the advisory unless you'd rather

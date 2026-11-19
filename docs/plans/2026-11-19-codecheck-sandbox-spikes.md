@@ -114,7 +114,7 @@ what ran, what happened, and what changes for the spec or plan.
   `npm ci --ignore-scripts` in a throwaway folder on the host.
 - Not run inside a VM: that would need root for a tap device, and the questions
   S3 answers do not depend on where npm runs.
-- The guest tools were checked inside the S2 inspect VM.
+- A check of the guest tools ran inside the S2 inspect VM.
 
 **Findings**
 
@@ -137,7 +137,7 @@ what ran, what happened, and what changes for the spec or plan.
 3. **The Ubuntu 24.04 cloud image already holds everything else the guest
    needs:** glibc, `git`, `ip`, `bash`, `setpriv`, `runuser`, `timeout`,
    `useradd`, `update-ca-certificates` and `/etc/ssl/certs/ca-certificates.crt`.
-   Only `rg` is missing. The binary carries a `USE_BUILTIN_RIPGREP` switch,
+   Only `rg` goes missing. The binary carries a `USE_BUILTIN_RIPGREP` switch,
    which points to a bundled ripgrep; confirm by behaviour during S4 or the
    canary.
 4. **The binary handles `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` itself;** both

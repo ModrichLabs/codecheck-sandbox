@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/ModrichLabs/codecheck-sandbox/internal/buildinfo"
 )
 
 // execute runs the root command with args and returns its output and error.
@@ -28,9 +30,6 @@ func TestRootHasEveryLifecycleSubcommand(t *testing.T) {
 
 	var got []string
 	for _, c := range NewRootCommand().Commands() {
-		if c.Name() == "help" || c.Name() == "completion" {
-			continue
-		}
 		got = append(got, c.Name())
 	}
 	slices.Sort(got)
@@ -81,10 +80,28 @@ func TestHelpListsCommandsButHidesProxy(t *testing.T) {
 	if strings.Contains(out, "proxy") {
 		t.Errorf("help mentions the hidden proxy command:\n%s", out)
 	}
+	if strings.Contains(out, "completion") {
+		t.Errorf("help offers cobra's undocumented completion command:\n%s", out)
+	}
+	if strings.Contains(out, "-v,") {
+		t.Errorf("help offers a -v shorthand for --version:\n%s", out)
+	}
+}
+
+func TestCompletionCommandDoesNotExist(t *testing.T) {
+	if _, err := execute(t, "completion", "bash"); err == nil {
+		t.Fatal("completion ran; want an unknown-command error")
+	}
+}
+
+func TestVersionHasNoShorthand(t *testing.T) {
+	if _, err := execute(t, "-v"); err == nil {
+		t.Fatal("-v succeeded; want an unknown-shorthand error")
+	}
 }
 
 func TestVersionSubcommandAndFlagPrintTheSameLine(t *testing.T) {
-	const want = "codecheck-sandbox 0.1.0-dev\n"
+	want := buildinfo.Name + " " + buildinfo.Version + "\n"
 	for _, args := range [][]string{{"version"}, {"--version"}} {
 		out, err := execute(t, args...)
 		if err != nil {

@@ -37,6 +37,10 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.SetVersionTemplate(versionLine())
+	root.CompletionOptions.DisableDefaultCmd = true
+	// Defining --version here stops cobra adding a -v shorthand, which a
+	// later flag may need.
+	root.Flags().Bool("version", false, "print the version")
 
 	f := root.PersistentFlags()
 	f.BoolVar(&opts.Yes, "yes", false, "run root steps without asking (reads the API key from CODECHECK_API_KEY)")

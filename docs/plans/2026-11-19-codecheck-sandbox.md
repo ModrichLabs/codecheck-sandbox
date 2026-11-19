@@ -3,10 +3,10 @@
 ## Context
 
 The approved spec, `docs/specs/2026-11-19-codecheck-sandbox-wizard.md`,
-describes `codecheck-sandbox`. It is a Go CLI with a Bubble Tea interface that
-sets up, checks and runs CodeCheck reviews inside jailed Firecracker microVMs,
-on any Linux machine with KVM. This plan breaks that spec into small, test-first
-tasks that a fresh session can pick up.
+describes `codecheck-sandbox`: a Go CLI with a Bubble Tea interface that sets
+up, checks and runs CodeCheck reviews inside jailed Firecracker microVMs, on any
+Linux machine with KVM. This plan breaks that spec into small, test-first tasks
+that a fresh session can pick up.
 
 Work runs inline, one task at a time: tick each box, commit, and note progress
 in this file. Spikes, the spike gate and the first M1 task happened in a
@@ -294,7 +294,7 @@ of repeating them.
     `https://github.com/Commonwealth-Bank-of-Australia/CodeCheck` and commit
     `3231a0def630ff7f1529de47af2ea763d23b8217` (tag `v0.0.1`).
 
-  **Test:** every pin is non-empty, every SHA-256 has 64 hex characters, the
+  **Test:** no pin stays empty, every SHA-256 has 64 hex characters, the
   CodeCheck commit has 40 hex characters, and the integrity string starts with
   `sha512-`.
 
@@ -560,7 +560,7 @@ of repeating them.
 - [ ] `setup`: builds the step list (phases from spec §7) and runs it through
       the engine, with the TUI or plain mode. `--yes` takes its answers from
       flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
-      is missing. **Test:** a full dry run on a fake host prints every planned
+      goes missing. **Test:** a full dry run on a fake host prints every planned
       command and changes nothing (`FakeRunner` sees no `Root` writes).
 - [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.

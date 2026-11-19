@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"testing"
+
+	"github.com/ModrichLabs/codecheck-sandbox/internal/buildinfo"
 )
 
 func TestVersionFlagPrintsNameAndVersion(t *testing.T) {
@@ -13,7 +15,7 @@ func TestVersionFlagPrintsNameAndVersion(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	if got, want := out.String(), "codecheck-sandbox 0.1.0-dev\n"; got != want {
+	if got, want := out.String(), buildinfo.Name+" "+buildinfo.Version+"\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }

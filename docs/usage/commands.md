@@ -13,6 +13,10 @@
 | `--debug`        | Log more detail, and echo the log to the terminal                        |
 | `--no-telemetry` | Send no usage or error reports, whatever the settings say                |
 | `--version`      | Print the version                                                        |
+| `-h`, `--help`   | Show help for any command                                                |
+
+The `--yes`, `--dry-run`, `--plain`, `--debug` and `--no-telemetry` flags
+already parse, but no command acts on them yet.
 
 ## Commands
 
@@ -27,6 +31,9 @@
 | `rebuild`   | Planned | Rebuilds the guest image, for example `rebuild --commit <sha>` for another CodeCheck commit      |
 | `uninstall` | Planned | Removes everything setup installed; see [uninstall](uninstall.md)                                |
 | `telemetry` | Planned | `telemetry on`, `off` or `status`; see [privacy and telemetry](privacy-and-telemetry.md)         |
+
+A hidden `proxy` command also exists. The `codecheck-proxy` systemd service runs
+it; you never need to run it yourself.
 
 ## Reviews
 
