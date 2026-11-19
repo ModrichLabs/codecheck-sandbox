@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in codecheck-sandbox did not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security problem?** Don't file it here. Report it privately instead:
+        https://github.com/ModrichLabs/codecheck-sandbox/security/advisories/new
+
+        Never paste your API key, or code you may not share, into an issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. codecheck-sandbox setup --plain
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: codecheck-sandbox version
+      description: Output of `codecheck-sandbox version`.
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Linux distribution and kernel
+      placeholder: Ubuntu 24.04, kernel 6.8
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor output
+      description:
+        Output of `codecheck-sandbox doctor --plain`, if setup got that far.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Relevant lines from the debug log, or mention that you can share a
+        `doctor --bundle` archive. Check them for secrets first.
+      render: text
