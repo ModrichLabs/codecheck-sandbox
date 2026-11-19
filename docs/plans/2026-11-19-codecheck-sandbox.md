@@ -9,12 +9,10 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Open:** the bootstrap pull request from `bootstrap/initial-structure` into
-  `main`, awaiting the maintainer's review and merge.
-- **Next:** M2, the system layer (`internal/system`), starting with `runner.go`
-  test-first. Branch from `main` after the bootstrap PR merges, in a new
-  worktree (for example `feat/system-layer`), and open one PR per milestone or
-  two.
+- **Merged:** the bootstrap pull request (#1) into `main`.
+- **In progress:** M2, the system layer (`internal/system`), on branch
+  `feat/system-layer` in its own worktree. `runner.go` done; next comes
+  `privilege.go`. One PR covers M2 once every task ticks.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -182,13 +180,16 @@ of repeating them.
 
 ## M2. System layer (`internal/system`)
 
-- [ ] `runner.go`:
+- [x] `runner.go`:
   - `type Cmd struct{ Name string; Args []string; Stdin []byte; Env []string; Root bool }`,
     `type Result struct{ Stdout, Stderr []byte; Code int }`, and
     `type Runner interface{ Run(ctx, Cmd) (Result, error) }`.
   - `ExecRunner` sets `LC_ALL=C` and never runs a shell.
   - **Tests:** argument passing, `LC_ALL`, exit codes, and stdin set to
     `/dev/null` when empty.
+  - _Done:_ a non-zero exit fills `Result.Code` without an error; `Run` errors
+    only when the command fails to start or the context ends. `ExecRunner`
+    refuses `Root:true` with `ErrRootNeeded`, leaving that to `privilege.go`.
 - [ ] `privilege.go`:
   - Detect `sudo`, sudo-rs, `doas` and `run0` from `PATH`, plus `sudo --version`
     output.
