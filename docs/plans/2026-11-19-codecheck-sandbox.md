@@ -142,7 +142,7 @@ of repeating them.
       `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), and
       `.github/ISSUE_TEMPLATE/` (bug, feature) plus
       `.github/pull_request_template.md`.
-- [ ] Documentation skeleton: `README.md` (what it does, status: pre-release,
+- [x] Documentation skeleton: `README.md` (what it does, status: pre-release,
       requirements, quick start, docs map, licence, CodeCheck credit),
       `docs/architecture.md` (components, trust boundaries, review flow, key
       handling and telemetry, from spec §§1–6 and §11), and `docs/usage/` with
@@ -150,7 +150,7 @@ of repeating them.
       `commands.md`, `troubleshooting.md`, `privacy-and-telemetry.md` and
       `uninstall.md`. Pages for features not built yet say so ("planned")
       instead of describing behaviour.
-- [ ] Markdown formatting: `npx --yes prettier@3.9.10 --check .` passes, with a
+- [x] Markdown formatting: `npx --yes prettier@3.9.10 --check .` passes, with a
       `.prettierrc` (`proseWrap: always`).
 - [ ] Open the bootstrap PR after asking the maintainer.
 

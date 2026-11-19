@@ -6,7 +6,7 @@ body:
     id: problem
     attributes:
       label: The problem
-      description: What you're trying to do, and what gets in the way today.
+      description: What you want to do, and what gets in the way today.
     validations:
       required: true
   - type: textarea
