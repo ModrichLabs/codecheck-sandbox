@@ -135,7 +135,7 @@ of repeating them.
       `CHANGELOG.md` (Keep a Changelog, `## [Unreleased]`, a pre-1.0 note),
       `.gitignore` (`/dist`, `/testdata/**/*.out`, `.claude/worktrees/`) and
       `.editorconfig`.
-- [ ] Community files: `CONTRIBUTING.md` (Conventional Commits, test-first,
+- [x] Community files: `CONTRIBUTING.md` (Conventional Commits, test-first,
       checks to run, changelog rule, DCO-style sign-off not required),
       `SECURITY.md` (private reporting through GitHub security advisories,
       supported versions `0.x` latest only, scope and threat model in brief),
