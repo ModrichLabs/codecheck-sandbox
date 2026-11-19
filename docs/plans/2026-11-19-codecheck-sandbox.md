@@ -11,7 +11,8 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** the bootstrap pull request (#1) into `main`.
 - **In progress:** M2, the system layer (`internal/system`), on branch
-  `feat/system-layer` in its own worktree. `runner.go` done; next comes
+  `feat/system-layer` in its own worktree. `runner.go` and `fake.go` done
+  (`fake.go` moved ahead, since the privilege tests need it); next comes
   `privilege.go`. One PR covers M2 once every task ticks.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
@@ -197,8 +198,10 @@ of repeating them.
   - `WriteRootFile(path, bytes, mode)` writes through `sudo -n tee` and then
     `chmod`, from in-memory bytes.
   - **Tests** use a fake runner and assert the exact argv for each tool.
-- [ ] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
+- [x] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
       by an argv prefix. It panics on any unexpected call, so tests fail loudly.
+  - _Done:_ `On(prefix...).Return(res)` or `.Fail(err)`; each script answers
+    once, in the order added; `Calls()` and `Pending()` support assertions.
 - [ ] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
       `OSFS` and a `MemFS` for tests.
 - [ ] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
