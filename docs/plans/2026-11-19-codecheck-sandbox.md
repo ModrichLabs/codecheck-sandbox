@@ -11,9 +11,9 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** the bootstrap pull request (#1) into `main`.
 - **In progress:** M2, the system layer (`internal/system`), on branch
-  `feat/system-layer` in its own worktree. `runner.go` and `fake.go` done
-  (`fake.go` moved ahead, since the privilege tests need it); next comes
-  `privilege.go`. One PR covers M2 once every task ticks.
+  `feat/system-layer` in its own worktree. `runner.go`, `fake.go` and
+  `privilege.go` done (`fake.go` moved ahead, since the privilege tests need
+  it); next comes `fs.go`. One PR covers M2 once every task ticks.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -191,13 +191,18 @@ of repeating them.
   - _Done:_ a non-zero exit fills `Result.Code` without an error; `Run` errors
     only when the command fails to start or the context ends. `ExecRunner`
     refuses `Root:true` with `ErrRootNeeded`, leaving that to `privilege.go`.
-- [ ] `privilege.go`:
+- [x] `privilege.go`:
   - Detect `sudo`, sudo-rs, `doas` and `run0` from `PATH`, plus `sudo --version`
     output.
   - `Cmd{Root:true}` runs through `<tool> -n`.
   - `WriteRootFile(path, bytes, mode)` writes through `sudo -n tee` and then
     `chmod`, from in-memory bytes.
   - **Tests** use a fake runner and assert the exact argv for each tool.
+  - _Done:_ `WriteRootFile` runs `install -m <mode> -T /dev/null <path>` and
+    then `tee -- <path>`, so a secret never sits under looser permissions (a
+    change from `tee` then `chmod`). `run0` accepts `-n` too. `PrivRunner`
+    refuses `Env` on root commands, which the tools would drop; doas and run0
+    also drop `LC_ALL=C`, so parsed root output should stick to JSON.
 - [x] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
       by an argv prefix. It panics on any unexpected call, so tests fail loudly.
   - _Done:_ `On(prefix...).Return(res)` or `.Fail(err)`; each script answers
