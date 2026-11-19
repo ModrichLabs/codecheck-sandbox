@@ -123,7 +123,7 @@ of repeating them.
   - **Test first:** `cmd/codecheck-sandbox/main_test.go` runs
     `run([]string{"--version"})` and expects `codecheck-sandbox 0.1.0-dev`.
   - Version string in `internal/buildinfo/version.go`.
-- [ ] Root cobra command in `internal/cli/root.go`:
+- [x] Root cobra command in `internal/cli/root.go`:
   - Global flags `--yes`, `--dry-run`, `--plain`, `--debug` and
     `--no-telemetry`.
   - Stub subcommands `setup`, `doctor`, `selftest`, `canary`, `review`,

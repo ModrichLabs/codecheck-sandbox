@@ -8,18 +8,23 @@ import (
 	"os"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/buildinfo"
+	"github.com/ModrichLabs/codecheck-sandbox/internal/cli"
 )
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes the CLI with args and returns the process exit code.
+// run executes the CLI with args and returns the process exit code: 0 on
+// success, 1 on any error.
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && args[0] == "--version" {
-		fmt.Fprintf(stdout, "%s %s\n", buildinfo.Name, buildinfo.Version)
-		return 0
+	root := cli.NewRootCommand()
+	root.SetArgs(args)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	if err := root.Execute(); err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", buildinfo.Name, err)
+		return 1
 	}
-	fmt.Fprintf(stderr, "%s: not implemented\n", buildinfo.Name)
-	return 2
+	return 0
 }
