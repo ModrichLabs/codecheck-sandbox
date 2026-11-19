@@ -33,6 +33,52 @@ func TestRedactPrefersTheLongestSecret(t *testing.T) {
 	}
 }
 
+func TestRedactMergesOverlappingSecrets(t *testing.T) {
+	r := &Redactor{}
+	r.Add("abcXYZ")
+	r.Add("XYZdef")
+	if got := r.RedactString("1abcXYZdef2"); got != "1[redacted]2" {
+		t.Errorf("RedactString = %q, want 1[redacted]2", got)
+	}
+}
+
+// failOnce fails its first write, then records the rest.
+type failOnce struct {
+	failed bool
+	buf    bytes.Buffer
+}
+
+func (f *failOnce) Write(p []byte) (int, error) {
+	if !f.failed {
+		f.failed = true
+		return 0, errors.New("disk full")
+	}
+	return f.buf.Write(p)
+}
+
+func TestRedactingWriterRetryAfterFailure(t *testing.T) {
+	r := &Redactor{}
+	r.Add(testKey)
+	dst := &failOnce{}
+	w := r.Writer(dst)
+	// The first attempt fails while the writer holds back the key's start;
+	// the caller retries the same bytes, as a logger would.
+	p := []byte("x " + testKey[:5])
+	if _, err := w.Write(p); err == nil {
+		t.Fatal("first write: want the disk-full error")
+	}
+	if _, err := w.Write(p); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if _, err := w.Write([]byte(testKey[5:] + "\n")); err != nil {
+		t.Fatalf("third write: %v", err)
+	}
+	_ = w.Close()
+	if got, want := dst.buf.String(), "x [redacted]\n"; got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
 // writeChunks writes text through a fresh redacting writer in chunks of size n.
 func writeChunks(t *testing.T, r *Redactor, text string, n int) string {
 	t.Helper()

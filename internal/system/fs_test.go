@@ -128,6 +128,16 @@ func TestMemFS(t *testing.T) {
 	})
 }
 
+func TestMemFSResolvesRelativePathsFromRoot(t *testing.T) {
+	m := NewMemFS()
+	if err := m.WriteFile("config.toml", []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile with a relative path: %v", err)
+	}
+	if got, err := m.ReadFile("/config.toml"); err != nil || string(got) != "x" {
+		t.Errorf("ReadFile(/config.toml) = %q, %v; want x", got, err)
+	}
+}
+
 func TestMemFSReadReturnsACopy(t *testing.T) {
 	m := NewMemFS()
 	_ = m.WriteFile("/f", []byte("abc"), 0o600)

@@ -31,14 +31,40 @@ func (r *Redactor) Add(secret string) {
 	slices.SortStableFunc(r.secrets, func(a, b []byte) int { return cmp.Compare(len(b), len(a)) })
 }
 
-// Redact returns b with every secret replaced. Longer secrets go first, so a
-// secret that contains a shorter one never leaves a fragment behind.
+// Redact returns a copy of b with every secret replaced. It marks every match
+// in the original bytes first and merges spans that touch or overlap, so two
+// overlapping secrets never leave a fragment of either behind.
 func (r *Redactor) Redact(b []byte) []byte {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := b
+	hidden := make([]bool, len(b))
+	found := false
 	for _, s := range r.secrets {
-		out = bytes.ReplaceAll(out, s, []byte(redacted))
+		for i := 0; ; {
+			j := bytes.Index(b[i:], s)
+			if j < 0 {
+				break
+			}
+			for k := i + j; k < i+j+len(s); k++ {
+				hidden[k] = true
+			}
+			found = true
+			i += j + 1
+		}
+	}
+	if !found {
+		return bytes.Clone(b)
+	}
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if !hidden[i] {
+			out = append(out, b[i])
+			continue
+		}
+		out = append(out, redacted...)
+		for i+1 < len(b) && hidden[i+1] {
+			i++
+		}
 	}
 	return out
 }
@@ -81,12 +107,12 @@ type redactingWriter struct {
 func (rw *redactingWriter) Write(p []byte) (int, error) {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
-	buf := rw.r.Redact(append(rw.pending, p...))
+	buf := rw.r.Redact(append(bytes.Clone(rw.pending), p...))
 	keep := rw.r.partialSuffix(buf)
-	rw.pending = append([]byte(nil), buf[len(buf)-keep:]...)
 	if _, err := rw.w.Write(buf[:len(buf)-keep]); err != nil {
-		return 0, err
+		return 0, err // pending stays as it was, so a retry of p starts clean
 	}
+	rw.pending = bytes.Clone(buf[len(buf)-keep:])
 	return len(p), nil
 }
 

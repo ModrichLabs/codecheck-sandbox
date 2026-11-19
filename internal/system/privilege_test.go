@@ -79,13 +79,19 @@ func TestDetectToolNoneFound(t *testing.T) {
 }
 
 func TestPrivRunnerArgvPerTool(t *testing.T) {
-	tools := []Tool{
-		{Kind: ToolSudo, Path: "/usr/bin/sudo"},
-		{Kind: ToolSudoRS, Path: "/usr/bin/sudo-rs"},
-		{Kind: ToolDoas, Path: "/usr/bin/doas"},
-		{Kind: ToolRun0, Path: "/usr/bin/run0"},
+	cmd := []string{"--", "nft", "-j", "list", "ruleset"}
+	tests := []struct {
+		tool Tool
+		args []string
+	}{
+		{Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}, append([]string{"-n"}, cmd...)},
+		{Tool{Kind: ToolSudoRS, Path: "/usr/bin/sudo-rs"}, append([]string{"-n"}, cmd...)},
+		{Tool{Kind: ToolDoas, Path: "/usr/bin/doas"}, append([]string{"-n"}, cmd...)},
+		// run0 starts a fresh environment, so it gets LC_ALL=C explicitly.
+		{Tool{Kind: ToolRun0, Path: "/usr/bin/run0"}, append([]string{"--no-ask-password", "--setenv=LC_ALL=C"}, cmd...)},
 	}
-	for _, tool := range tools {
+	for _, tt := range tests {
+		tool := tt.tool
 		t.Run(string(tool.Kind), func(t *testing.T) {
 			f := &FakeRunner{}
 			f.On(tool.Path).Return(Result{})
@@ -94,7 +100,7 @@ func TestPrivRunnerArgvPerTool(t *testing.T) {
 			if _, err := p.Run(context.Background(), in); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			want := Cmd{Name: tool.Path, Args: []string{"-n", "nft", "-j", "list", "ruleset"}, Stdin: []byte("x")}
+			want := Cmd{Name: tool.Path, Args: tt.args, Stdin: []byte("x")}
 			if got := f.Calls(); !reflect.DeepEqual(got, []Cmd{want}) {
 				t.Errorf("calls = %#v, want %#v", got, []Cmd{want})
 			}
@@ -125,15 +131,17 @@ func TestPrivRunnerRefusesEnvOnRootCommands(t *testing.T) {
 func TestWriteRootFile(t *testing.T) {
 	f := &FakeRunner{}
 	f.On("install").Return(Result{})
-	f.On("tee").Return(Result{Stdout: []byte("payload")})
+	f.On("dd").Return(Result{})
 	data := []byte("payload")
 
 	if err := WriteRootFile(context.Background(), f, "/etc/sudoers.d/codecheck-sandbox", data, 0o440); err != nil {
 		t.Fatalf("WriteRootFile: %v", err)
 	}
+	// dd prints nothing, unlike tee, so the contents never come back as
+	// command output that a log could record.
 	want := []Cmd{
 		{Name: "install", Args: []string{"-m", "0440", "-T", "/dev/null", "/etc/sudoers.d/codecheck-sandbox"}, Root: true},
-		{Name: "tee", Args: []string{"--", "/etc/sudoers.d/codecheck-sandbox"}, Stdin: data, Root: true},
+		{Name: "dd", Args: []string{"of=/etc/sudoers.d/codecheck-sandbox", "status=none"}, Stdin: data, Root: true},
 	}
 	if got := f.Calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls =\n%#v\nwant\n%#v", got, want)

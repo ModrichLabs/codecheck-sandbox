@@ -88,6 +88,23 @@ func TestKeepAliveReportsRunnerErrors(t *testing.T) {
 	}
 }
 
+func TestKeepAliveStaysQuietWhenCancelledMidTick(t *testing.T) {
+	sudo := Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}
+	// With ctx already ended and a tick waiting, select picks either case at
+	// random; neither may report an error.
+	for range 50 {
+		f := &FakeRunner{}
+		f.On(sudo.Path).Fail(context.Canceled)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		tick := make(chan time.Time, 1)
+		tick <- time.Time{}
+		if errs := waitClosed(t, KeepAlive(ctx, f, sudo, tick)); len(errs) != 0 {
+			t.Fatalf("errors = %v, want none after cancel", errs)
+		}
+	}
+}
+
 func TestKeepAliveDoasChecksWithTrue(t *testing.T) {
 	doas := Tool{Kind: ToolDoas, Path: "/usr/bin/doas"}
 	f := &FakeRunner{}

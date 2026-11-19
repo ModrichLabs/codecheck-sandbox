@@ -64,7 +64,9 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 
 	err := cmd.Run()
 	res := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}
-	if ctxErr := ctx.Err(); ctxErr != nil {
+	// Blame the context only for a run that failed: a command that exited
+	// cleanly just before the deadline still succeeded.
+	if ctxErr := ctx.Err(); err != nil && ctxErr != nil {
 		return res, fmt.Errorf("%s: %w", c.Name, ctxErr)
 	}
 	var exitErr *exec.ExitError

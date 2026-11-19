@@ -91,6 +91,19 @@ func TestExecRunnerRefusesRoot(t *testing.T) {
 	}
 }
 
+// endedAfterExit reports an ended context but never closes Done, standing in
+// for a deadline that passes just after the command exits.
+type endedAfterExit struct{ context.Context }
+
+func (endedAfterExit) Err() error { return context.DeadlineExceeded }
+
+func TestExecRunnerKeepsSuccessWhenContextEndsAfterExit(t *testing.T) {
+	res, err := ExecRunner{}.Run(endedAfterExit{context.Background()}, Cmd{Name: "true"})
+	if err != nil || res.Code != 0 {
+		t.Errorf("Run = code %d, err %v; want a plain success", res.Code, err)
+	}
+}
+
 func TestExecRunnerHonoursContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

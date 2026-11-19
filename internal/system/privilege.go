@@ -11,8 +11,8 @@ import (
 // ToolKind names a supported privilege tool.
 type ToolKind string
 
-// The privilege tools the engine knows. Every one of them accepts -n, which
-// fails at once instead of prompting for a password.
+// The privilege tools the engine knows. Each has a flag that fails at once
+// instead of prompting for a password: -n, or --no-ask-password for run0.
 const (
 	ToolSudo   ToolKind = "sudo"
 	ToolSudoRS ToolKind = "sudo-rs"
@@ -57,14 +57,20 @@ func DetectTool(ctx context.Context, r Runner, lookPath func(string) (string, er
 	return Tool{}, ErrNoPrivilegeTool
 }
 
-// PrivRunner runs Root commands through the privilege tool with -n, so they
-// never prompt while the interface owns the terminal. Other commands go to
-// Inner unchanged.
+// PrivRunner runs Root commands through the privilege tool without letting it
+// prompt, so nothing draws over the interface. Other commands go to Inner
+// unchanged.
+//
+// The command line reads `<tool> -n -- <name> <args…>`: the `--` keeps the
+// command's own flags away from the tool's option parser, and the command
+// itself stays unwrapped, so a sudoers rule such as the cc-launch drop-in
+// still matches it. run0 instead gets `--no-ask-password` (which older run0
+// releases know, unlike -n) and `--setenv=LC_ALL=C`, since it starts the
+// command in a fresh environment. sudo's env_keep usually keeps LC_ALL; doas
+// drops it, so parsed root output should stick to JSON.
 //
 // The privilege tool resets the environment, so a Root command may not carry
-// Env: PrivRunner refuses it rather than drop it without a word. The command
-// line stays exactly `<tool> -n <name> <args…>`, which lets a sudoers rule
-// such as the cc-launch drop-in match it.
+// Env: PrivRunner refuses it rather than drop it without a word.
 type PrivRunner struct {
 	Inner Runner
 	Tool  Tool
@@ -78,18 +84,24 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	if len(c.Env) > 0 {
 		return Result{}, fmt.Errorf("%s: %s would drop Env from a root command", c.Name, p.Tool.Kind)
 	}
-	args := append([]string{"-n", c.Name}, c.Args...)
+	args := []string{"-n"}
+	if p.Tool.Kind == ToolRun0 {
+		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
+	}
+	args = append(append(args, "--", c.Name), c.Args...)
 	return p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
 }
 
 // WriteRootFile writes data to a root-owned file at path with the given mode.
 // It creates the file empty with its final mode first, then fills it through
-// tee from the in-memory bytes, so the content never sits in a file with
-// looser permissions. r must handle Root commands (a PrivRunner).
+// dd from the in-memory bytes, so the content never sits in a file with
+// looser permissions. dd, unlike tee, prints nothing, so the content never
+// comes back as command output either. r must handle Root commands (a
+// PrivRunner).
 func WriteRootFile(ctx context.Context, r Runner, path string, data []byte, mode os.FileMode) error {
 	steps := []Cmd{
 		{Name: "install", Args: []string{"-m", fmt.Sprintf("%04o", mode.Perm()), "-T", "/dev/null", path}, Root: true},
-		{Name: "tee", Args: []string{"--", path}, Stdin: data, Root: true},
+		{Name: "dd", Args: []string{"of=" + path, "status=none"}, Stdin: data, Root: true},
 	}
 	for _, c := range steps {
 		if err := runChecked(ctx, r, c); err != nil {

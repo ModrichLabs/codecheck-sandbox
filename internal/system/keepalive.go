@@ -51,7 +51,11 @@ func KeepAlive(ctx context.Context, r Runner, tool Tool, tick <-chan time.Time) 
 				if args == nil {
 					continue
 				}
-				if err := refresh(ctx, r, Cmd{Name: tool.Path, Args: args}); err != nil {
+				err := refresh(ctx, r, Cmd{Name: tool.Path, Args: args})
+				if ctx.Err() != nil {
+					return // the caller stopped us; no failure to report
+				}
+				if err != nil {
 					out <- err
 					return
 				}

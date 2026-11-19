@@ -13,8 +13,9 @@ _Updated 2026-11-20._
 - **In progress:** M2, the system layer (`internal/system`), on branch
   `feat/system-layer` in its own worktree. `runner.go`, `fake.go`,
   `privilege.go`, `fs.go`, `keepalive.go` and `redact.go` done (`fake.go` moved
-  ahead, since the privilege tests need it); next comes the M2 review and pull
-  request. One PR covers M2 once every task ticks.
+  ahead, since the privilege tests need it). `/code-review medium` found 10
+  issues; all got fixed or documented. Next: the M2 pull request, then M3 (the
+  step engine) on a new branch once it merges.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -200,10 +201,13 @@ of repeating them.
     `chmod`, from in-memory bytes.
   - **Tests** use a fake runner and assert the exact argv for each tool.
   - _Done:_ `WriteRootFile` runs `install -m <mode> -T /dev/null <path>` and
-    then `tee -- <path>`, so a secret never sits under looser permissions (a
-    change from `tee` then `chmod`). `run0` accepts `-n` too. `PrivRunner`
-    refuses `Env` on root commands, which the tools would drop; doas and run0
-    also drop `LC_ALL=C`, so parsed root output should stick to JSON.
+    then `dd of=<path> status=none`, so a secret never sits under looser
+    permissions or echoes back as stdout (a change from `tee` then `chmod`;
+    later tasks that say `sudo tee` mean `WriteRootFile`). Root commands run as
+    `<tool> -n -- <cmd>`; run0 gets `--no-ask-password --setenv=LC_ALL=C`
+    instead of `-n`. `PrivRunner` refuses `Env` on root commands, which the
+    tools would drop; doas drops `LC_ALL=C` too, so parsed root output should
+    stick to JSON.
 - [x] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
       by an argv prefix. It panics on any unexpected call, so tests fail loudly.
   - _Done:_ `On(prefix...).Return(res)` or `.Fail(err)`; each script answers
@@ -225,7 +229,7 @@ of repeating them.
   - _Done:_ `Redactor.Writer` catches a secret split across writes, holding back
     only a tail that could start one; `Redactor.Runner` redacts stderr and error
     messages (keeping the error chain) but leaves stdout alone.
-- [ ] Commit each file pair separately (`feat(system): …`).
+- [x] Commit each file pair separately (`feat(system): …`).
 
 ## M3. Step engine (`internal/step`)
 

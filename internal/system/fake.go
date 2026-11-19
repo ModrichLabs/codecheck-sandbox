@@ -11,7 +11,8 @@ import (
 // FakeRunner stands in for a real Runner in tests. Script each expected call
 // with On; every Run consumes the first unused script whose argv prefix
 // matches. A call with no matching script panics, so a test never runs a
-// command it did not plan for.
+// command it did not plan for. Script every call before handing the fake to
+// code that runs concurrently: Return and Fail take no lock.
 type FakeRunner struct {
 	mu      sync.Mutex
 	scripts []*FakeCall

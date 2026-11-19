@@ -35,7 +35,7 @@ func (OSFS) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(p
 func (OSFS) Remove(name string) error                     { return os.Remove(name) }
 
 // MemFS implements FS in memory, for tests. It starts with an empty root
-// folder "/" and ignores the umask.
+// folder "/", resolves relative paths from "/" and ignores the umask.
 type MemFS struct {
 	mu      sync.Mutex
 	entries map[string]*memEntry
@@ -53,10 +53,13 @@ func NewMemFS() *MemFS {
 
 func memErr(op, name string, err error) error { return &fs.PathError{Op: op, Path: name, Err: err} }
 
+// memPath cleans name and anchors a relative path at the root folder.
+func memPath(name string) string { return filepath.Join("/", name) }
+
 func (m *MemFS) ReadFile(name string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	e, ok := m.entries[filepath.Clean(name)]
+	e, ok := m.entries[memPath(name)]
 	switch {
 	case !ok:
 		return nil, memErr("open", name, fs.ErrNotExist)
@@ -69,7 +72,7 @@ func (m *MemFS) ReadFile(name string) ([]byte, error) {
 func (m *MemFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p := filepath.Clean(name)
+	p := memPath(name)
 	if e, ok := m.entries[p]; ok {
 		if e.mode.IsDir() {
 			return memErr("open", name, syscall.EISDIR)
@@ -91,7 +94,7 @@ func (m *MemFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 func (m *MemFS) Stat(name string) (fs.FileInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p := filepath.Clean(name)
+	p := memPath(name)
 	e, ok := m.entries[p]
 	if !ok {
 		return nil, memErr("stat", name, fs.ErrNotExist)
@@ -102,7 +105,7 @@ func (m *MemFS) Stat(name string) (fs.FileInfo, error) {
 func (m *MemFS) MkdirAll(path string, perm fs.FileMode) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p := filepath.Clean(path)
+	p := memPath(path)
 	// Walk from the top down, creating each missing folder.
 	var chain []string
 	for d := p; ; d = filepath.Dir(d) {
@@ -127,7 +130,7 @@ func (m *MemFS) MkdirAll(path string, perm fs.FileMode) error {
 func (m *MemFS) Remove(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	p := filepath.Clean(name)
+	p := memPath(name)
 	e, ok := m.entries[p]
 	if !ok {
 		return memErr("remove", name, fs.ErrNotExist)
