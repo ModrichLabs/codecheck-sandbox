@@ -1,0 +1,648 @@
+# Plan: codecheck-sandbox implementation
+
+## Context
+
+The approved spec, `docs/specs/2026-11-19-codecheck-sandbox-wizard.md`,
+describes `codecheck-sandbox`. It is a Go CLI with a Bubble Tea interface that
+sets up, checks and runs CodeCheck reviews inside jailed Firecracker microVMs,
+on any Linux machine with KVM. This plan breaks that spec into small, test-first
+tasks that a fresh session can pick up.
+
+Work runs inline, one task at a time: tick each box, commit, and note progress
+in this file. Spikes, the spike gate and the first M1 task happened in a
+CodeCheck fork (`ModrichLabs/CodeCheck`, branch `feat/codecheck-sandbox`); on
+2026-11-20 the project moved to this standalone repository (spec amendment 7).
+
+**Goal:** `codecheck-sandbox setup` takes a Linux machine with KVM from nothing
+to a verified sandbox, and `codecheck-sandbox review` runs a contained CodeCheck
+review. Every other lifecycle command works too.
+
+**Architecture:** A step engine with `Check`, `Plan`, `Apply` and `Undo` for
+each step, sitting on a fakeable `Runner`. Around it:
+
+- A Bubble Tea interface, with a plain mode for scripts and CI.
+- A built-in CONNECT proxy that injects the API key.
+- A root-owned launch helper, `cc-launch`.
+- A builder VM that makes the guest root disk.
+
+The spec, sections 1–9, holds the detail. This plan cites those sections instead
+of repeating them.
+
+## Conventions for every task
+
+- **Working folder:** a git worktree of this repository on a feature branch;
+  never commit to `main`. Go module: `github.com/ModrichLabs/codecheck-sandbox`
+  at the repository root, using Go 1.27.
+- **Test-first:** write the test, run it and watch it fail for the expected
+  reason. Then write the minimal code, see it pass and refactor. Production code
+  written before its test gets deleted and rewritten test-first.
+- **Checks after each task:** `go test ./... && go vet ./...`, plus
+  `gofmt -l .`, which must print nothing.
+- **Commits:** Conventional Commits, one per task, ending with the
+  `Co-Authored-By` line. Commits get signed; if signing fails, ask the
+  maintainer rather than skip it.
+- **Changelog and versions:** each user-visible change gets an entry in
+  `CHANGELOG.md` under `## [Unreleased]`. Releases stay pre-1.0 (`0.y.z`) until
+  the maintainer declares 1.0.0.
+- **Docs:** when a task changes behaviour, update `docs/architecture.md` or
+  `docs/usage/` in the same commit.
+- **Language:** Australian English and E-Prime in comments, interface text and
+  docs.
+- **System calls:** never shell out directly. Every command goes through
+  `system.Runner`. Parsed commands run with `LC_ALL=C` and use JSON output
+  (`ip -j`, `nft -j`).
+- **When blocked,** or when a spike contradicts the spec: stop and ask the
+  maintainer, and don't improvise around it.
+
+**Libraries:**
+
+- Interface, all on Charm v2 (approved at the spike gate):
+  `charm.land/bubbletea/v2`, `charm.land/bubbles/v2`, `charm.land/huh/v2`,
+  `charm.land/lipgloss/v2`, `charm.land/glamour/v2`, `charmbracelet/log` and
+  `charmbracelet/x/exp/teatest/v2`. Check each module's import path against
+  `proxy.golang.org` when adding it.
+- Command line: `spf13/cobra`.
+- Signature checks: `ProtonMail/go-crypto/openpgp`.
+- Everything else comes from the standard library.
+
+## M0. Spikes (time-boxed and manual; findings go in `docs/plans/2026-11-19-codecheck-sandbox-spikes.md`)
+
+- [x] **S1 Firecracker basics (2 h).** Done 2026-11-19; see the spikes file.
+      Changes: v1.18.0, reboot not power-off, a cgroup wait for `--new-pid-ns`.
+  - Install Firecracker v1.17 from its release tarball into `~/spike/fc`.
+  - Boot the CI guest kernel with a busybox initramfs as a normal user. Then
+    boot it under `jailer --cgroup-version 2` through
+    `sudo systemd-run --scope -p RuntimeMaxSec=60`, with the files bind-mounted
+    read-only into the chroot.
+  - Record the exact jailer flags, whether bind mounts work, and whether
+    `poweroff` or `reboot -f` makes Firecracker exit.
+- [x] **S2 Ubuntu base (2 h).** Done 2026-11-19; see the spikes file. Proposes a
+      Go guest init.
+  - Download the Ubuntu 24.04 cloud squashfs and its `SHA256SUMS` and
+    `SHA256SUMS.gpg`, and verify the signature with `gpg`.
+  - Boot it as the root device, read-only, with `init=/bin/sh`.
+  - Record the device names, the drivers needed, and the boot arguments.
+- [x] **S3 Claude Code install (2 h).** Done 2026-11-19 on the host; see the
+      spikes file. Proposes an offline guest build with the native binary.
+      Inside an S2 VM with temporary network access:
+  - Run `npm ci --ignore-scripts` from a lockfile for
+    `@anthropic-ai/claude-code@2.1.327`, then check that `claude --version`
+    works.
+  - Record the native optional packages it pulls and the binary's path and hash.
+- [x] **S4 TLS interception (2 h).**
+  - Write a 60-line Go proxy in `~/spike` that intercepts CONNECT with a
+    self-signed CA and logs the `x-api-key` header it sees.
+  - Run `claude -p "say hi"` against it with `HTTPS_PROXY` and
+    `NODE_EXTRA_CA_CERTS`.
+  - Confirm that the proxy sees the header, that a key swap works, and which
+    headers carry auth: `x-api-key` and/or `authorization`.
+  - **Done 2026-11-19.** Interception and the key swap work; the key travels
+    only in `x-api-key`; the bundled Grep works with no `rg`. Found that
+    `--bare` removes Grep, Glob, Agent and Skill: proposed dropping it (see the
+    spikes file).
+- [x] **S5 sudo handover (1 h).**
+  - Build a minimal Bubble Tea program that hands the terminal to `sudo -v`
+    through `tea.ExecProcess`, then runs `sudo -n true` while the program owns
+    the screen.
+  - Test under sudo and, if available, sudo-rs.
+  - **Done 2026-11-19.** The handover and the background `sudo -n` both work
+    under sudo 1.9.17p2; no sudo-rs on this host. No spec change.
+- [x] **Gate.** Commit the spikes file
+      (`docs: record codecheck-sandbox spike findings`), then report the results
+      to the maintainer. If any spike contradicts the spec, propose a spec
+      change and wait for approval.
+  - **Done 2026-11-19.** The maintainer approved all four spec changes (Go guest
+    init, offline guest build, live status without cost, no `--bare`) and Charm
+    v2. The spec's "Amendments after the spikes" section lists them; M5, M7, M8,
+    M9, M10 and M11 below reflect them.
+
+## M1. Scaffold
+
+- [x] `go mod init github.com/ModrichLabs/codecheck-sandbox`, and add
+      `cmd/codecheck-sandbox/main.go`.
+  - **Test first:** `cmd/codecheck-sandbox/main_test.go` runs
+    `run([]string{"--version"})` and expects `codecheck-sandbox 0.1.0-dev`.
+  - Version string in `internal/buildinfo/version.go`.
+- [ ] Root cobra command in `internal/cli/root.go`:
+  - Global flags `--yes`, `--dry-run`, `--plain`, `--debug` and
+    `--no-telemetry`.
+  - Stub subcommands `setup`, `doctor`, `selftest`, `canary`, `review`,
+    `rebuild`, `uninstall`, `telemetry`, `proxy` (hidden) and `version`. Each
+    stub returns "not implemented".
+  - Tests check the command tree and the help text.
+- [ ] Project files: `LICENSE` (Apache-2.0 text), `NOTICE` (copyright Modrich
+      Labs; credits CodeCheck, MIT, Commonwealth Bank of Australia),
+      `CHANGELOG.md` (Keep a Changelog, `## [Unreleased]`, a pre-1.0 note),
+      `.gitignore` (`/dist`, `/testdata/**/*.out`, `.claude/worktrees/`) and
+      `.editorconfig`.
+- [ ] Community files: `CONTRIBUTING.md` (Conventional Commits, test-first,
+      checks to run, changelog rule, DCO-style sign-off not required),
+      `SECURITY.md` (private reporting through GitHub security advisories,
+      supported versions `0.x` latest only, scope and threat model in brief),
+      `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), and
+      `.github/ISSUE_TEMPLATE/` (bug, feature) plus
+      `.github/pull_request_template.md`.
+- [ ] Documentation skeleton: `README.md` (what it does, status: pre-release,
+      requirements, quick start, docs map, licence, CodeCheck credit),
+      `docs/architecture.md` (components, trust boundaries, review flow, key
+      handling and telemetry, from spec §§1–6 and §11), and `docs/usage/` with
+      `README.md` (index), `requirements.md`, `install.md`, `setup.md`,
+      `commands.md`, `troubleshooting.md`, `privacy-and-telemetry.md` and
+      `uninstall.md`. Pages for features not built yet say so ("planned")
+      instead of describing behaviour.
+- [ ] Markdown formatting: `npx --yes prettier@3.9.10 --check .` passes, with a
+      `.prettierrc` (`proseWrap: always`).
+- [ ] Open the bootstrap PR after asking the maintainer.
+
+## M2. System layer (`internal/system`)
+
+- [ ] `runner.go`:
+  - `type Cmd struct{ Name string; Args []string; Stdin []byte; Env []string; Root bool }`,
+    `type Result struct{ Stdout, Stderr []byte; Code int }`, and
+    `type Runner interface{ Run(ctx, Cmd) (Result, error) }`.
+  - `ExecRunner` sets `LC_ALL=C` and never runs a shell.
+  - **Tests:** argument passing, `LC_ALL`, exit codes, and stdin set to
+    `/dev/null` when empty.
+- [ ] `privilege.go`:
+  - Detect `sudo`, sudo-rs, `doas` and `run0` from `PATH`, plus `sudo --version`
+    output.
+  - `Cmd{Root:true}` runs through `<tool> -n`.
+  - `WriteRootFile(path, bytes, mode)` writes through `sudo -n tee` and then
+    `chmod`, from in-memory bytes.
+  - **Tests** use a fake runner and assert the exact argv for each tool.
+- [ ] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
+      by an argv prefix. It panics on any unexpected call, so tests fail loudly.
+- [ ] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
+      `OSFS` and a `MemFS` for tests.
+- [ ] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
+      the context ends, and reports the first failure on a channel. Tested with
+      a fake clock.
+- [ ] `redact.go`: `Redactor` replaces registered secrets in any byte stream.
+  - **Test:** a key registered once never appears in the output of the log
+    writer or the runner's error messages.
+- [ ] Commit each file pair separately (`feat(system): …`).
+
+## M3. Step engine (`internal/step`)
+
+- [ ] `step.go`:
+  - `type Step interface{ ID() string; Title() string; Phase() Phase; Check(ctx) (Status, error); Plan(ctx) (Plan, error); Apply(ctx) error; Undo(ctx) error }`.
+  - `Plan` holds `[]PlannedCmd` and `[]PlannedFile{Path, Mode, Content}`, plus a
+    `NeedsRoot` flag.
+- [ ] `engine.go`:
+  - `Run(ctx, steps, Mode{DryRun, AssumeYes}, events chan<- Event, confirm ConfirmFunc)`.
+  - It runs `Check`, and skips a step when the check passes. Otherwise it builds
+    the plan, asks for confirmation (unless `--yes`), applies, and checks again.
+  - Events: `StepStarted`, `StepPlanned`, `StepNeedsConfirm`, `StepDone`,
+    `StepFailed`, `NeedsSudo` and `Progress`.
+  - **Tests:** skip-when-passing; dry-run never calls `Apply`; a declined
+    confirm stops the run; a failed re-check marks the step failed; event order.
+- [ ] `undo.go`:
+  - `Uninstall(ctx, steps, manifest)` runs `Undo` in reverse, only for steps the
+    manifest lists as `created`.
+  - **Tests:** order, and the skipping of `adopted` and missing entries.
+- [ ] `manifest.go`:
+  - Schema
+    `{version:1, installedBy, items:[{id, kind, path, state:created|adopted}]}`.
+  - Load and save through `system.WriteRootFile` to
+    `/var/lib/codecheck-sandbox/manifest.json`.
+  - Every path gets checked against a compiled allowlist (spec §8).
+  - **Tests:** round trip; rejection of a path outside the allowlist; an unknown
+    schema version gets refused.
+- [ ] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
+      **Test:** two lockers in one process, where the second gets `ErrBusy`.
+
+## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
+
+- [ ] `logging/logging.go`: a `slog` JSON handler that writes through
+      `system.Redactor` to a rotating file (10 MB, five kept), plus an optional
+      `charmbracelet/log` tee for `--debug`. **Tests:** a registered secret
+      never appears in the file; rotation keeps five files; the level follows
+      `--debug`.
+- [ ] `telemetry/events.go`: typed event structs for usage, errors, environment
+      profile and security signals, with enum and band types (`DurationBand`,
+      `CostBand`, `SizeBand`). **Tests:** band edges.
+- [ ] `telemetry/allowlist_test.go`, the safety test: fill every event with the
+      worst values each type allows, add a planted key, path, repo URL, hostname
+      and username to the surrounding context (step errors, config,
+      environment), serialise, and assert that none of them appear. A reflection
+      walk also fails the test if any event field has a plain `string` type
+      outside the enum and version types.
+- [ ] `telemetry/exception.go`: build `$exception` properties from an error: the
+      kind from `errors.As` against known types or sentinels, never
+      `err.Error()`; a stack limited to frames inside the module, with file
+      paths cut to the module root. **Tests:** an error wrapping
+      `/home/x/secret` yields neither the path nor the message.
+- [ ] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
+      `--no-telemetry`, `--yes`, TTY and `config.toml`; create or delete the
+      install id. **Tests:** a table of every combination.
+- [ ] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
+      `Noop` and `PostHog`. Queue to
+      `~/.local/state/codecheck-sandbox/telemetry/queue.jsonl` (1 MB cap, oldest
+      dropped); `Flush` sends through `posthog-go` (pinned version, feature
+      flags off, no debug images) with a 3-second deadline, then clears the
+      queue; failures go only to the local log. Every event gets
+      `$process_person_profile: false` and `$geoip_disable: true`. **Tests:** an
+      `httptest` server receives the batch with the expected properties; a
+      hanging server never delays `Flush` past the deadline; a server error
+      leaves the command's exit code alone.
+- [ ] Hook points: the engine emits `step_finished` through an injected client
+      (M3 tests use `Noop`); `cli` wraps every command for `command_run` and a
+      final `Flush`. `cc-launch` never imports `internal/telemetry`; an import
+      test enforces that.
+- [ ] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
+      to `internal/pins`. Project key (public, write-only; a dedicated
+      organisation in US Cloud, confirmed 2026-11-19 by a 200 from
+      `us.i.posthog.com/flags` and a 401 from EU):
+      `phc_pR2TVwdPiaMaERt5bD6h77nvDkhq59G7bsvip8aPNyiP`. An empty key still
+      makes `PostHog` fall back to `Noop` (keep that test). Builds may override
+      it with `-ldflags -X` so forks can point at their own project.
+- [ ] Commit each file pair separately (`feat(telemetry): …`,
+      `feat(logging): …`).
+
+## M4. Platform and distro (`internal/platform`, `internal/distro`)
+
+- [ ] `distro/osrelease.go`: parse `/etc/os-release`, then map `ID` and
+      `ID_LIKE` to a family: arch, debian, fedora, suse or unknown. Table-driven
+      tests use real samples in
+      `testdata/os-release/{arch,omarchy,ubuntu-24.04,debian-12,fedora-41,rhel-9,opensuse-tumbleweed,alpine}`.
+- [ ] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
+      `squashfs-tools`, `git`, `iproute2` and `gnupg` to package names and an
+      install argv for each family. Golden test of every family's argv.
+- [ ] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
+      so it reports through the engine; checks that only read have `Apply`
+      return "fix manually: …".
+  - **CPU architecture:** x86_64 only; aarch64 gets a clear "deferred" message.
+  - **KVM access for `fcjail`:** `/dev/kvm` exists, and its owner, group and
+    mode let that user open it.
+  - **systemd** and **cgroups v2**: from `/sys/fs/cgroup/cgroup.controllers`.
+  - **RAM:** at least 8 GB, from `/proc/meminfo`.
+  - **Free disk:** at least 10 GB on `/var/lib`.
+  - **Firewall managers:** firewalld, ufw and Docker detected.
+  - **Security module:** SELinux or AppArmor, and its mode.
+
+  **Tests:** each check against `MemFS` fixtures.
+
+## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
+
+- [ ] `pins/pins.go`, filled from the spike results:
+  - Firecracker and jailer tarball URL and SHA-256.
+  - Ubuntu squashfs URL, the `SHA256SUMS` URLs and the signing-key fingerprint.
+  - Guest kernel URL (a release of this repository) and its SHA-256.
+  - Claude Code version 2.1.327, the `claude-code-linux-x64` tarball URL, its
+    npm `sha512` integrity, and the `claude` binary's SHA-256 (spikes file, S3).
+  - CodeCheck: repository
+    `https://github.com/Commonwealth-Bank-of-Australia/CodeCheck` and commit
+    `3231a0def630ff7f1529de47af2ea763d23b8217` (tag `v0.0.1`).
+
+  **Test:** every pin is non-empty, every SHA-256 has 64 hex characters, the
+  CodeCheck commit has 40 hex characters, and the integrity string starts with
+  `sha512-`.
+
+- [ ] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
+      `~/.cache/codecheck-sandbox/codecheck.git` (a bare repository, HTTPS only,
+      `git fetch --depth 1 <url> <commit>`, with `core.hooksPath=/dev/null` and
+      `protocol.file.allow=never`), check that `rev-parse FETCH_HEAD` equals the
+      pin, then `git archive <commit> .claude-plugin skills     LICENSE.txt`
+      into the build inputs. **Tests:** against a local bare repository: the
+      right commit, a mismatched commit refused, a non-HTTPS URL refused (except
+      `file://` in tests through an injected option).
+
+- [ ] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
+      checked and the file renamed. It reports `Progress` events, and removes
+      the file on a hash mismatch.
+  - **Tests:** an `httptest` TLS server covers a good hash, a bad hash, plain
+    `http` refused and a partial download.
+- [ ] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
+      embedded Ubuntu key in `assets/keys/ubuntu-cloudimage.asc`, then look up
+      the squashfs line.
+  - **Tests:** a test key signs fixtures; check good, tampered and wrong-key
+    cases.
+- [ ] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
+      integrity, extract only `package/claude` (refusing links, absolute paths
+      and `..`), cap the size, and check the binary's SHA-256. Never runs npm,
+      Node or package scripts.
+  - **Tests:** a fixture tarball covers a good file, a bad integrity, a bad
+    binary hash, a path-traversal entry and a symlink entry.
+
+## M6. Host network (`internal/hostnet`)
+
+- [ ] Templates in `assets/host/`:
+  - `codecheck-net.service`: creates the tap, sets its address, turns IPv6 off
+    and brings it up, then loads the rules.
+  - `rules.nft`: uses `destroy table`, then `table`, with the review allow rule
+    and final drops (spec §3).
+  - `nm-unmanaged.conf`: tells NetworkManager to leave the taps alone.
+
+  `hostnet.Render(Config)` fills them in. **Golden tests** in
+  `testdata/golden/`.
+
+- [ ] `hostnet/rulehash.go`: canonical JSON from
+      `nft -j list table inet codecheck`, with handles stripped and keys sorted,
+      then SHA-256.
+  - **Tests:** a fixture JSON gives a stable hash; reordered handles give the
+    same hash; an extra rule changes it.
+- [ ] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
+      `FakeRunner`:
+  - `JailUserStep` (`fcjail`, recorded as created or adopted)
+  - `JailerBaseStep` (`/srv/jailer`, mode 711)
+  - `TapServiceStep`
+  - `RulesStep`, which also records the expected hash in
+    `/var/lib/codecheck-sandbox/rules.sha256`
+  - `NMUnmanagedStep`, only when NetworkManager runs
+  - `FirewalldStep` and `UfwStep`, only when they're active: they allow 3180 on
+    the tap
+  - `SELinuxStep`, only when SELinux enforces
+
+## M7. Egress proxy (`internal/proxy`)
+
+- [ ] `ca.go`: generate the sandbox CA (ECDSA P-256, 10 years, name constraints
+      limited to `api.anthropic.com`), then write the key and certificate
+      through `WriteRootFile` to `/etc/codecheck-sandbox/ca/`.
+  - **Tests:** the constraints work, and a leaf for another host fails
+    verification.
+- [ ] `proxy.go`, an `http.Handler`:
+  - Only `CONNECT` gets through, and only to `api.anthropic.com:443` and from
+    the configured client address; anything else gets 403, logged.
+  - Inside the tunnel, `POST /v1/messages`, `GET /api/claude_code/settings` and
+    `GET /api/claude_code/policy_limits` pass (spike S4); log any other path.
+  - The proxy terminates TLS with a leaf certificate from the CA.
+  - It rejects any request whose auth header differs from the guest placeholder
+    `sk-ant-sandbox-placeholder`.
+  - It replaces that placeholder with the real key, then forwards over real TLS.
+  - Caps on requests and bytes per connection.
+
+  **Tests**, against an `httptest` TLS upstream:
+  - allowed host
+  - denied host
+  - denied source address
+  - plain GET refused
+  - wrong key rejected
+  - placeholder swapped
+  - real key never written to the log
+  - caps enforced
+
+- [ ] `denylog.go`: a JSON-lines denial log under
+      `/var/log/codecheck-sandbox/proxy.jsonl`, with rotation at 10 MB.
+      **Test:** the format, and rotation.
+- [ ] `cli/proxy.go`: the hidden `proxy` subcommand.
+  - Flags `--listen` and `--client`. No build mode: the guest build runs with no
+    network (spike gate).
+  - Reads the key from `$CREDENTIALS_DIRECTORY/api-key`.
+
+  **Tests** cover flag validation and a missing or empty credential.
+
+- [ ] `assets/host/codecheck-proxy.service`: `DynamicUser=yes`,
+      `LoadCredential=api-key:/etc/codecheck-sandbox/api-key`,
+      `ProtectSystem=strict`, `PrivateTmp`, `NoNewPrivileges`,
+      `RestrictAddressFamilies=AF_INET AF_INET6`, `After=codecheck-net.service`,
+      `BindsTo=codecheck-net.service`. Golden test. Then `ProxyServiceStep` and
+      `ApiKeyStep`.
+
+## M8. Guest init and assets (`cmd/cc-guestinit`, `internal/guestinit`, `assets/guest/`)
+
+- [ ] `internal/guestinit/config.go`: parse the fixed 4 KB key=value block from
+      the raw config device (mode `build`, `review` or `selftest`, plus run
+      settings). **Tests:** valid blocks, unknown keys, oversize values, missing
+      mode.
+- [ ] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
+      over writable paths, code disk read-only at `/work`, output disk at
+      `/out`), `eth0` at 172.16.0.2 with no default route and IPv6 off, then
+      runs `cc-claude` or `cc-selftest` as `agent` through `setpriv`, and writes
+      `exit-code` to `/out`. Mounts and commands go through an interface, so
+      tests use fakes.
+- [ ] `internal/guestinit/build.go`: as root, copy the base tree from the
+      squashfs onto the target disk (keeping owners, modes, setuid and links),
+      add the inputs disk's files (`claude`, the plugin, `cc-claude`,
+      `cc-selftest`, `cc-guestinit` itself, the CA via
+      `update-ca-certificates`), create the `agent` user, and set git's
+      `safe.directory`. **Tests:** against a temp-dir tree with fakes for the
+      privileged calls.
+- [ ] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
+      picks the mode, and always ends with `reboot(LINUX_REBOOT_CMD_RESTART)`,
+      even after a panic (spike S1: power-off hangs). **Test:** mode dispatch
+      and the deferred reboot through an injectable syscall.
+- [ ] `cc-claude`:
+  - fixed flags (spec §6):
+    `-p --restricted --strict-mcp-config --tools Read,Grep,Glob,Agent,Skill --allowedTools Read,Grep,Glob,Agent,Skill --plugin-dir … --permission-mode dontAsk --max-budget-usd … --no-session-persistence --output-format stream-json --verbose`;
+    never `--bare`
+  - the placeholder key, `NODE_EXTRA_CA_CERTS`, the telemetry variables, and
+    `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`
+  - in diff mode, a git allowlist that excludes `--ext-diff`, `--output` and
+    `-c`
+- [ ] `cc-selftest`: the eight original probes, plus other host ports, IPv6
+      link-local, a Docker-published port when present, DNS, and a spoofed
+      source address using `ip addr add` (which the probe should not manage to
+      do as `agent`).
+- [ ] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
+      The build VM has no `network-interfaces` entry; the boot arguments never
+      repeat `pci=off` or `virtio_mmio` (spike S2).
+- [ ] `assets_test.go`: when `shellcheck` exists, run it on every script;
+      otherwise skip with a message. Also check that `cc-claude` carries
+      `--restricted`, `--strict-mcp-config` and the exact `--tools` list, and
+      never `--bare`.
+
+## M9. Launch helper (`cmd/cc-launch`, `internal/launch`)
+
+- [ ] `launch/runid.go`: run ids must match
+      `^cc-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$`. The run folder sits at
+      `/var/lib/codecheck-sandbox/runs/<id>`, and only the CLI writes there,
+      through `sudo tee`. **Tests:** valid and invalid ids, and path traversal.
+- [ ] `launch/verify.go`, in order:
+  1. the lock
+  2. the kernel and root disk SHA-256 against
+     `/var/lib/codecheck-sandbox/images.sha256`
+  3. the rule hash against `rules.sha256`
+  4. the owner of the `172.16.0.1:3180` listener, from `/proc/net/tcp`, then the
+     socket inode, the pid, `/proc/<pid>/cgroup` and the systemd unit
+     `codecheck-proxy.service`
+  5. the run disks: size caps and the ext4 magic number
+
+  **Tests:** each failure path, using `MemFS` and `FakeRunner`.
+
+- [ ] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
+      images) and copies (run disks), then build the
+      `systemd-run --scope -p RuntimeMaxSec=… jailer …` argv from the spike S1
+      flags. **Golden test** of the argv.
+  - Keep `--new-pid-ns`; the jailer returns at once, so wait for the scope's
+    `cgroup.events` to show `populated 0` before cleanup (spike S1, option b).
+    **Test:** cleanup never starts while the fake cgroup still reports
+    `populated 1`.
+- [ ] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
+      capped at 200 MB, `stderr.log` at 5 MB, `exit-code` at 16 bytes),
+      `debugfs -R "cat /<f>"`, run as `nobody` through `setpriv`. Then clean up
+      the chroot and the run folder. **Tests:** caps and the file list.
+- [ ] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
+      else and exits with documented codes.
+- [ ] `assets/host/sudoers`:
+      `%<user> ALL=(root) NOPASSWD: /usr/local/lib/codecheck-sandbox/bin/cc-launch`.
+      `LauncherStep` installs the binary root-owned with mode 755, and validates
+      the sudoers file with `visudo -cf` before moving it into place.
+
+## M10. Guest build (`internal/guest`)
+
+- [ ] `guest/build.go` (no network at any point):
+  1. Download and verify the base, kernel, Firecracker and Claude Code pins
+     (M5).
+  2. Create a blank `target.ext4` (3 GB) and a read-only inputs disk: the
+     `claude` binary, the plugin from `git archive`, `cc-guestinit`,
+     `cc-claude`, `cc-selftest` and the CA certificate. Config block mode
+     `build`.
+  3. Boot the builder through `cc-launch build <id>`. This separate subcommand
+     uses the build VM template only, which has no network device; it takes the
+     same lock as reviews. Its own argv validation and tests go into M9.
+  4. Check the result, then install the kernel and root disk into
+     `/var/lib/codecheck-sandbox/` and write `images.sha256`.
+
+  Progress events come from the streamed serial log. **Tests:** sequence and
+  failure handling with fakes; the real build runs in M15.
+
+- [ ] `GuestBuildStep`, whose `Check` passes when the image hashes match and the
+      pins have not changed since the last build.
+
+## M11. Review pipeline (`internal/review`)
+
+- [ ] `review/source.go`:
+  - Clone a URL or local path into `~/codecheck-work/<name>-<ts>` (`--no-local`
+    for paths).
+  - `--pr N` fetches `pull/N/head`.
+  - `--base REF`, or the merge base with the default branch, sets diff mode.
+
+  **Tests** use local git repos in `t.TempDir()`.
+
+- [ ] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
+      settings and remote only), and remove `.git/hooks`. **Test:** a planted
+      `diff.external` and a hook both disappear.
+- [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
+      from `du` plus 30%; the config block (key=value, fixed 4 KB, no secrets:
+      mode, budget, prompt, baseline); and a blank output disk. **Tests** run
+      against small fixtures when `mkfs.ext4` exists.
+- [ ] `review/postrun.go`, from the extracted files:
+  - the result event (`subtype`, `is_error`, `total_cost_usd`)
+  - refusal patterns
+  - new proxy denials since the run started
+  - the exit code
+  - `report.md` and `summary.json`
+
+  **Tests** use fixture transcripts: success, budget stop, refusal and empty.
+
+- [ ] `review/run.go`: write the run folder through `sudo tee`, call
+      `sudo -n cc-launch <id>`, and stream status events from the VM's serial
+      log.
+  - Live status shows elapsed time and VM state (spec §2, as amended); cost
+    appears in the final summary from `postrun.go`.
+
+## M12. Interface (`internal/theme`, `internal/tui`)
+
+- [ ] `theme/theme.go`: Lip Gloss adaptive palette, plus the styles for sidebar,
+      panels, ✓ ✗ ⣾ · and keys. Test: renders at the ASCII profile.
+- [ ] `tui/app.go`: the root model that routes engine events to screens. Quit
+      through `q` or Ctrl-C asks for confirmation during root steps.
+- [ ] `tui/sidebar.go`, `tui/steplist.go`, `tui/confirm.go` (commands, the `d`
+      key opens a viewport of files, Enter, `s`, `q`), `tui/progress.go`,
+      `tui/failure.go` (cause, fix, `r` retry). Each gets a `teatest` golden
+      test at 100×30.
+- [ ] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
+      `tea.ExecProcess(sudo -v)`, then start the keepalive. A unit test checks
+      the message flow. The manual checklist goes in `docs/manual-tests.md`.
+- [ ] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
+      key. The API key field uses `EchoModePassword`, and its validator calls
+      `/v1/models` through an injectable client. Tests cover the validators.
+  - A telemetry consent step: default "No", with a viewport showing a sample
+    payload rendered from real event structs. **Test:** the default stays off,
+    and the sample holds no field outside the event types.
+- [ ] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
+      Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
+- [ ] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
+      exists. Golden test of a full fake run.
+
+## M13. Commands (`internal/cli`)
+
+- [ ] `setup`: builds the step list (phases from spec §7) and runs it through
+      the engine, with the TUI or plain mode. `--yes` takes its answers from
+      flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
+      is missing. **Test:** a full dry run on a fake host prints every planned
+      command and changes nothing (`FakeRunner` sees no `Root` writes).
+- [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
+      drift (re-render, then compare with installed). It exits 1 on any failure.
+      **Tests:** healthy and drifted fake hosts.
+- [ ] `doctor --bundle [--out FILE]`: list the files first, then write a
+      redacted `.tar.gz` of recent logs, `doctor` output, versions and the
+      environment profile. **Test:** a planted key in a log never reaches the
+      archive.
+- [ ] `telemetry on|off|status`: change and show consent; `off` deletes the
+      install id and the queue. **Tests:** each subcommand against a temp config
+      folder.
+- [ ] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
+      `assets/canary/`) as a review with budget 5; then their pass rules (spec
+      §7). **Tests** use fixture outputs.
+- [ ] `review`: flags from spec §8. **Test:** argument validation, and the
+      run-folder contents.
+- [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
+- [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
+      scan, and keeps reports unless `--purge`. **Test:** a fake host after
+      setup ends clean, and adopted items stay.
+- [ ] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
+      folder, VM size, CodeCheck commit, telemetry). Hand-rolled TOML subset or
+      `BurntSushi/toml`. **Test:** round trip.
+
+## M14. Docs
+
+- [ ] Complete every `docs/usage/` page against the built tool: requirements,
+      install (`go install ./cmd/...`, then `codecheck-sandbox setup`), the
+      setup walkthrough with screenshots or captured screens, each command and
+      flag, unattended mode, troubleshooting by failing step, privacy and
+      telemetry (the exact event list), and uninstall. Remove every "planned"
+      marker or keep it only for deferred items.
+- [ ] Complete `docs/architecture.md`: diagrams of the host footprint, the boot
+      and review flow, and trust boundaries; check each claim against the code.
+- [ ] `README.md`: final quick start and limits (Linux with KVM, x86_64, one VM
+      at a time). Fill in `CHANGELOG.md` `[Unreleased]`.
+- [ ] Update the maintainer's private deployment plan document: a note at the
+      top that the CLI now automates it, plus the proxy and key-injection
+      change. (The maintainer has the link.)
+
+## M15. Integration and finish
+
+- [ ] `integration/` (`//go:build integration`). On this laptop, with sudo:
+  1. `setup --yes`
+  2. `doctor`
+  3. `selftest`, where every escape probe passes
+  4. `canary`
+  5. `uninstall`
+  6. `doctor` again, reporting nothing installed
+
+  Run:
+  `CODECHECK_API_KEY=… go test -tags integration ./integration/ -timeout 90m`.
+
+- [ ] Manual sudo-handover checklist (`docs/manual-tests.md`), worked through
+      and ticked.
+- [ ] The pilot:
+      `codecheck-sandbox review https://github.com/juice-shop/juice-shop --prompt "Run a security review of ./routes" --budget 25`.
+      Record cost, time and findings in the spikes file.
+- [ ] Final checks:
+  - `go test ./... && go vet ./...`
+  - `gofmt -l .` prints nothing
+  - `npx --yes prettier@3.9.10 --check .`
+- [ ] Run `/code-review medium` and fix what it finds.
+- [ ] Ask the maintainer before pushing and opening the PR.
+- [ ] The PR to `main` of ModrichLabs/codecheck-sandbox, with a summary, test
+      evidence and the 🤖 line. The maintainer reviews and merges, then decides
+      whether to tag `v0.1.0`.
+
+## Deferred (not in this plan)
+
+- aarch64.
+- A nested-KVM QEMU test matrix for Ubuntu and Fedora (spec §9, "later").
+- Parallel reviews.
+- Release binaries.
+
+## Verification
+
+Done means:
+
+- `go test ./...` and the integration suite pass on this laptop.
+- `codecheck-sandbox setup --dry-run` changes nothing.
+- A real `setup` passes `doctor` and every `selftest` probe.
+- The canary passes.
+- The Juice Shop pilot produces a report.
+- `uninstall` returns `doctor` to "nothing installed".
