@@ -12,9 +12,9 @@ _Updated 2026-11-20._
 - **Merged:** the bootstrap pull request (#1) into `main`.
 - **In progress:** M2, the system layer (`internal/system`), on branch
   `feat/system-layer` in its own worktree. `runner.go`, `fake.go`,
-  `privilege.go` and `fs.go` done (`fake.go` moved ahead, since the privilege
-  tests need it); next comes `keepalive.go`. One PR covers M2 once every task
-  ticks.
+  `privilege.go`, `fs.go` and `keepalive.go` done (`fake.go` moved ahead, since
+  the privilege tests need it); next comes `redact.go`. One PR covers M2 once
+  every task ticks.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -212,9 +212,13 @@ of repeating them.
       `OSFS` and a `MemFS` for tests.
   - _Done:_ one contract test runs against both; errors match the `os`
     package's, so `errors.Is(err, fs.ErrNotExist)` works on either.
-- [ ] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
+- [x] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
       the context ends, and reports the first failure on a channel. Tested with
       a fake clock.
+  - _Done:_ `KeepAlive` takes the tick channel (the fake clock);
+    `StartKeepAlive` wires a real 60-second ticker. doas runs `-n true`, which
+    detects expiry but cannot extend it; run0 runs nothing. A non-zero exit
+    reports `ErrLoginExpired` with the tool's stderr.
 - [ ] `redact.go`: `Redactor` replaces registered secrets in any byte stream.
   - **Test:** a key registered once never appears in the output of the log
     writer or the runner's error messages.
