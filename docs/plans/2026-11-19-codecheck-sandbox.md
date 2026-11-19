@@ -130,7 +130,7 @@ of repeating them.
     `rebuild`, `uninstall`, `telemetry`, `proxy` (hidden) and `version`. Each
     stub returns "not implemented".
   - Tests check the command tree and the help text.
-- [ ] Project files: `LICENSE` (Apache-2.0 text), `NOTICE` (copyright Modrich
+- [x] Project files: `LICENSE` (Apache-2.0 text), `NOTICE` (copyright Modrich
       Labs; credits CodeCheck, MIT, Commonwealth Bank of Australia),
       `CHANGELOG.md` (Keep a Changelog, `## [Unreleased]`, a pre-1.0 note),
       `.gitignore` (`/dist`, `/testdata/**/*.out`, `.claude/worktrees/`) and
