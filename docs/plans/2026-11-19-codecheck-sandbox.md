@@ -1,5 +1,31 @@
 # Plan: codecheck-sandbox implementation
 
+## Where we are (resume here)
+
+_Updated 2026-11-20._
+
+- **Done:** M0 (spikes S1–S5 and the gate; all spec amendments approved) and M1
+  (scaffold, command tree, licence, community files, documentation skeleton).
+  `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
+  global flags reach no command until M13; stub commands accept any arguments
+  until each gets real behaviour).
+- **Open:** the bootstrap pull request from `bootstrap/initial-structure` into
+  `main`, awaiting the maintainer's review and merge.
+- **Next:** M2, the system layer (`internal/system`), starting with `runner.go`
+  test-first. Branch from `main` after the bootstrap PR merges, in a new
+  worktree (for example `feat/system-layer`), and open one PR per milestone or
+  two.
+- **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
+  unless a task blocks.
+- **Machine facts for later milestones:** the spike files live outside the
+  repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
+  `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
+  native binary under `~/spike/npm/node_modules/`). Root and interactive steps
+  (sudo, hidden key prompts) run in the maintainer's own terminal, never through
+  a non-interactive shell.
+- **Kept for history:** the CodeCheck fork's `feat/codecheck-sandbox` branch;
+  don't delete it without asking.
+
 ## Context
 
 The approved spec, `docs/specs/2026-11-19-codecheck-sandbox-wizard.md`,
@@ -152,7 +178,7 @@ of repeating them.
       instead of describing behaviour.
 - [x] Markdown formatting: `npx --yes prettier@3.9.10 --check .` passes, with a
       `.prettierrc` (`proseWrap: always`).
-- [ ] Open the bootstrap PR after asking the maintainer.
+- [x] Open the bootstrap PR after asking the maintainer (opened 2026-11-20).
 
 ## M2. System layer (`internal/system`)
 
