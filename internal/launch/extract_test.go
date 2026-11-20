@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -190,6 +191,65 @@ func TestCollectOutDiskMovesItOutOfTheJail(t *testing.T) {
 	}
 	if _, err := os.Lstat(j.OutDisk); !os.IsNotExist(err) {
 		t.Errorf("the disk stayed in the jail: %v", err)
+	}
+}
+
+// The jail's disk path sits where Firecracker can write: a symlink planted
+// there must not turn root's chmod and chown onto another file.
+func TestCollectOutDiskRefusesASymlink(t *testing.T) {
+	r, m, job := stageRig(t, reviewCfg())
+	j, err := Stage(context.Background(), r.env, m, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "shadow")
+	write(t, victim, []byte("secret"), 0o600)
+	os.Remove(j.OutDisk)
+	if err := os.Symlink(victim, j.OutDisk); err != nil {
+		t.Fatal(err)
+	}
+	if err := CollectOutDisk(r.env, j, job); err == nil {
+		t.Error("CollectOutDisk accepted a symlink")
+	}
+	if fi, _ := os.Stat(victim); fi.Mode().Perm() != 0o600 {
+		t.Errorf("the symlink's target changed mode to %v", fi.Mode().Perm())
+	}
+	if _, err := os.Lstat(filepath.Join(r.dir, "out.ext4")); !os.IsNotExist(err) {
+		t.Errorf("something landed in the run folder: %v", err)
+	}
+}
+
+// Once a result file closes, nothing may touch it by path again: a user who
+// owned the folder could swap it for a symlink to a root file.
+func TestExtractNeverChownsByPathAfterWriting(t *testing.T) {
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	defer func() { afterResultWrite = nil }()
+	afterResultWrite = func(path string) {
+		os.Remove(path)
+		os.Symlink(filepath.Join(dir, "no-such-target"), path) // dangling: a path chown fails
+	}
+	if _, err := Extract(context.Background(), e, job); err != nil {
+		t.Errorf("Extract = %v; it touched a result file by path after writing it", err)
+	}
+}
+
+func TestExtractHandsOverTheFolderLast(t *testing.T) {
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.ResultUID = os.Getuid() + 1 // someone else: the hand-over chown can't happen in a test
+	var owners []int
+	defer func() { afterResultWrite = nil }()
+	afterResultWrite = func(string) {
+		fi, _ := os.Stat(filepath.Join(dir, "result"))
+		owners = append(owners, int(fi.Sys().(*syscall.Stat_t).Uid))
+	}
+	Extract(context.Background(), e, job)
+	for _, o := range owners {
+		if o != e.Owner {
+			t.Errorf("the result folder belonged to uid %d while files went in, want %d", o, e.Owner)
+		}
+	}
+	if len(owners) == 0 {
+		t.Error("no file got written")
 	}
 }
 

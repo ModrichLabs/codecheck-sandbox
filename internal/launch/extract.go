@@ -40,6 +40,9 @@ var resultFiles = []struct {
 
 const buildMarker = "/etc/codecheck-sandbox/build-complete"
 
+// afterResultWrite lets tests act in the window after a result file closes.
+var afterResultWrite func(path string)
+
 // diskName names the writable disk a mode leaves in the run folder.
 func diskName(m guestinit.Mode) string {
 	if m == guestinit.ModeBuild {
@@ -51,29 +54,75 @@ func diskName(m guestinit.Mode) string {
 // CollectOutDisk moves the VM's writable disk from the jail into the run
 // folder, read-only and root-owned, so the jail can go and an unprivileged
 // debugfs can read the disk.
+//
+// Firecracker, which runs as the jail user, can write where the disk sits,
+// so every change goes through a descriptor opened without following links,
+// and the file that arrives must be the inode that descriptor holds.
 func CollectOutDisk(e Env, j *Jail, job Job) error {
 	dst := filepath.Join(job.ID.Dir(e.Paths), diskName(job.Config.Mode))
-	if err := os.Chown(j.OutDisk, e.Owner, e.Owner); err != nil {
+	f, err := os.OpenFile(j.OutDisk, os.O_RDONLY|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", j.OutDisk, err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(j.OutDisk, 0o444); err != nil {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !fi.Mode().IsRegular() || !ok || st.Nlink != 1 {
+		return fmt.Errorf("%s: not a plain file with one link", j.OutDisk)
+	}
+	if err := f.Chown(e.Owner, e.Owner); err != nil {
 		return err
 	}
-	err := os.Rename(j.OutDisk, dst)
+	if err := f.Chmod(0o444); err != nil {
+		return err
+	}
+
+	err = os.Rename(j.OutDisk, dst)
 	if errors.Is(err, unix.EXDEV) {
-		if err := copyFile(j.OutDisk, dst, 0o444); err != nil {
-			return err
-		}
-		return os.Remove(j.OutDisk)
+		// Another filesystem: copy from the checked descriptor itself.
+		return copyFrom(f, dst, 0o444)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// The path could have changed between the open and the rename.
+	got, err := os.Lstat(dst)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(fi, got) {
+		_ = os.Remove(dst)
+		return fmt.Errorf("%s changed while it moved", j.OutDisk)
+	}
+	return nil
+}
+
+// copyFrom copies an open file into a new file dst with mode.
+func copyFrom(in *os.File, dst string, mode os.FileMode) error {
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		_ = os.Remove(dst)
+		return err
+	}
+	if err := out.Chmod(mode); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // Extract reads the run's writable disk with debugfs as nobody. For a job it
 // copies the fixed file list, each within its cap, into a result folder the
 // calling user owns, and returns the names it copied; a missing file just
 // stays missing. For a build it checks the completion marker instead.
-func Extract(ctx context.Context, e Env, job Job) ([]string, error) {
+func Extract(ctx context.Context, e Env, job Job) (copied []string, err error) {
 	disk := filepath.Join(job.ID.Dir(e.Paths), diskName(job.Config.Mode))
 	if job.Config.Mode == guestinit.ModeBuild {
 		var buf bytes.Buffer
@@ -84,14 +133,18 @@ func Extract(ctx context.Context, e Env, job Job) ([]string, error) {
 		return nil, nil
 	}
 
+	// The folder stays root's until every file sits in it, owned through its
+	// descriptor: a user who owned the folder sooner could swap a file for a
+	// symlink between its write and any later call by path.
 	result := filepath.Join(job.ID.Dir(e.Paths), "result")
 	if err := os.Mkdir(result, 0o700); err != nil {
 		return nil, err
 	}
-	if err := os.Chown(result, e.ResultUID, e.ResultGID); err != nil {
-		return nil, err
-	}
-	var copied []string
+	defer func() {
+		if cerr := os.Lchown(result, e.ResultUID, e.ResultGID); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 	var errs []error
 	for _, f := range resultFiles {
 		ok, err := extractOne(ctx, e, disk, filepath.Join(result, f.name), "/"+f.name, f.cap)
@@ -115,17 +168,27 @@ func extractOne(ctx context.Context, e Env, disk, dst, src string, limit int64) 
 	}
 	w := &capped{w: out, left: limit}
 	found, err := debugfsCat(ctx, e, disk, src, w)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
 	if w.over {
 		err = ErrTooLarge
 	}
-	if err != nil || !found {
-		_ = os.Remove(dst)
+	keep := err == nil && found
+	if keep {
+		// Through the descriptor, never by path.
+		err = out.Chown(e.ResultUID, e.ResultGID)
+		keep = err == nil
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+		keep = keep && cerr == nil
+	}
+	if afterResultWrite != nil {
+		afterResultWrite(dst)
+	}
+	if !keep {
+		_ = os.Remove(dst) // the folder is still root's, so dst is still ours
 		return false, err
 	}
-	return true, os.Chown(dst, e.ResultUID, e.ResultGID)
+	return true, nil
 }
 
 // debugfsCat streams one file from the disk into w. debugfs exits 0 even
