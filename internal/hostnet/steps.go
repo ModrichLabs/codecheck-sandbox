@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
@@ -24,6 +26,32 @@ type Deps struct {
 	FS system.FS
 	// Record hears every item Apply creates, for the manifest; nil drops them.
 	Record func(step.Item)
+	// APIKey supplies the key the wizard collected; nil means none.
+	APIKey func() (string, error)
+	// Executable names the running binary, which the proxy step installs;
+	// nil means os.Executable.
+	Executable func() (string, error)
+
+	// proxyChanged notes that a step replaced something the running proxy
+	// loaded at start (its binary, CA or key), so the service must restart.
+	// Steps creates it, so all the steps of one run share it.
+	proxyChanged *atomic.Bool
+}
+
+// selinuxEnforcing reports whether SELinux enforces on this host.
+func (d Deps) selinuxEnforcing() bool {
+	b, err := d.FS.ReadFile("/sys/fs/selinux/enforce")
+	return err == nil && strings.TrimSpace(string(b)) == "1"
+}
+
+// relabel gives new files their default SELinux labels straight away, so a
+// service started later in the same run can use them; without enforcing
+// SELinux it does nothing.
+func (d Deps) relabel(ctx context.Context, paths ...string) error {
+	if !d.selinuxEnforcing() {
+		return nil
+	}
+	return d.run(ctx, root("restorecon", append([]string{"-F", "--"}, paths...)...))
 }
 
 const (
@@ -38,7 +66,8 @@ const (
 )
 
 func init() {
-	telemetry.RegisterStepIDs(idJailUser, idJailerBase, idRules, idNM, idTap, idFirewalld, idUfw, idSELinux)
+	telemetry.RegisterStepIDs(idJailUser, idJailerBase, idRules, idNM, idTap, idFirewalld, idUfw, idSELinux,
+		idProxyBinary, idProxyCA, idAPIKey, idProxyService)
 }
 
 // Steps returns the host phase in order: the rules load before the tap
@@ -49,6 +78,7 @@ func Steps(d Deps) ([]step.Step, error) {
 	if err := d.Config.Validate(); err != nil {
 		return nil, err
 	}
+	d.proxyChanged = &atomic.Bool{}
 	// The engine runs Apply again after a login handover, so the same item
 	// can come twice; the manifest keeps each once.
 	if rec := d.Record; rec != nil {
@@ -62,7 +92,9 @@ func Steps(d Deps) ([]step.Step, error) {
 	}
 	return []step.Step{
 		d.jailUser(), d.jailerBase(), d.rules(), d.nmUnmanaged(),
-		d.tapService(), d.firewalld(), d.ufw(), d.selinux(),
+		d.tapService(), d.firewalld(), d.ufw(),
+		d.proxyBinary(), d.proxyCA(), d.apiKey(), d.proxyService(),
+		d.selinux(), // last, so it labels everything above
 	}, nil
 }
 
@@ -158,18 +190,22 @@ func (d Deps) ensureDir(ctx context.Context, id, p string) error {
 	return nil
 }
 
-// undoFiles removes file items, then empty folder items, in that order.
+// undoFiles removes file items, then empty folder items, deepest first so a
+// parent goes after its children.
 func (d Deps) undoFiles(ctx context.Context, items []step.Item) error {
 	var errs []error
+	var dirs []string
 	for _, it := range items {
-		if it.Kind == step.KindFile {
+		switch it.Kind {
+		case step.KindFile:
 			errs = append(errs, d.run(ctx, root("rm", "-f", "--", it.Path)))
+		case step.KindDir:
+			dirs = append(dirs, it.Path)
 		}
 	}
-	for _, it := range items {
-		if it.Kind == step.KindDir {
-			errs = append(errs, d.run(ctx, root("rmdir", "--ignore-fail-on-non-empty", "--", it.Path)))
-		}
+	slices.SortStableFunc(dirs, func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") })
+	for _, p := range dirs {
+		errs = append(errs, d.run(ctx, root("rmdir", "--ignore-fail-on-non-empty", "--", p)))
 	}
 	return errors.Join(errs...)
 }
@@ -445,6 +481,9 @@ func (d Deps) tapService() step.Step {
 				return err
 			}
 			d.record(step.Item{ID: idTap, Kind: step.KindFile, Path: unitFile.Path, State: step.Created})
+			if err := d.relabel(ctx, unitFile.Path); err != nil {
+				return err
+			}
 			if err := d.runAll(ctx, cmds); err != nil {
 				return err
 			}
@@ -613,7 +652,7 @@ func (d Deps) ufw() step.Step {
 
 func (d Deps) selinux() step.Step {
 	c := d.Config
-	candidates := []string{path.Dir(c.RulesPath), path.Dir(c.HashPath), c.JailerBase, "/usr/local/lib/codecheck-sandbox", c.UnitPath}
+	candidates := []string{path.Dir(c.RulesPath), path.Dir(c.HashPath), c.JailerBase, "/usr/local/lib/codecheck-sandbox", c.UnitPath, c.ProxyUnitPath}
 	present := func() []string {
 		var out []string
 		for _, p := range candidates {
@@ -623,14 +662,10 @@ func (d Deps) selinux() step.Step {
 		}
 		return out
 	}
-	enforcing := func() bool {
-		b, err := d.FS.ReadFile("/sys/fs/selinux/enforce")
-		return err == nil && strings.TrimSpace(string(b)) == "1"
-	}
 	return hostStep{
 		id: idSELinux, title: "SELinux labels",
 		check: func(ctx context.Context) (step.Status, error) {
-			if !enforcing() {
+			if !d.selinuxEnforcing() {
 				return pass("SELinux not enforcing; nothing to do")
 			}
 			paths := present()

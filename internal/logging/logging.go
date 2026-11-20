@@ -133,17 +133,26 @@ type rotating struct {
 	mu   sync.Mutex
 	path string
 	max  int64
+	mode os.FileMode
 	f    *os.File
 	size int64
 }
 
 func openRotating(path string, max int64) (*rotating, error) {
-	r := &rotating{path: path, max: max}
+	r := &rotating{path: path, max: max, mode: 0o600}
+	return r, r.open()
+}
+
+// OpenRotating returns a writer that appends to path, rotating at max bytes
+// and keeping five files, each created with mode. The proxy's denial log
+// uses it.
+func OpenRotating(path string, max int64, mode os.FileMode) (io.WriteCloser, error) {
+	r := &rotating{path: path, max: max, mode: mode}
 	return r, r.open()
 }
 
 func (r *rotating) open() error {
-	f, err := os.OpenFile(r.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	f, err := os.OpenFile(r.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, r.mode)
 	if err != nil {
 		return fmt.Errorf("opening the log: %w", err)
 	}

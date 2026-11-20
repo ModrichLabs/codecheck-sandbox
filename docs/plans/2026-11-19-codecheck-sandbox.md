@@ -10,12 +10,12 @@ _Updated 2026-11-20._
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
-  logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
-  downloads (#7) into `main`.
-- **In progress:** M6, host network, on branch `feat/host-network` in its own
-  worktree. Every M6 task done and the `/code-review medium` findings fixed;
-  next come the M6 pull request, then M7 (egress proxy) on a new branch once it
-  merges.
+  logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
+  (#7) and M6 host network (#9) into `main`.
+- **In progress:** M7, egress proxy, on branch `feat/egress-proxy` in its own
+  worktree. Every M7 task done and the `/code-review medium` findings handled;
+  next come the M7 pull request, then M8 (guest init and assets) on a new branch
+  once it merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -624,12 +624,17 @@ of repeating them.
 
 ## M7. Egress proxy (`internal/proxy`)
 
-- [ ] `ca.go`: generate the sandbox CA (ECDSA P-256, 10 years, name constraints
+- [x] `ca.go`: generate the sandbox CA (ECDSA P-256, 10 years, name constraints
       limited to `api.anthropic.com`), then write the key and certificate
       through `WriteRootFile` to `/etc/codecheck-sandbox/ca/`.
   - **Tests:** the constraints work, and a leaf for another host fails
     verification.
-- [ ] `proxy.go`, an `http.Handler`:
+  - _Done:_ besides the DNS constraint, the CA excludes every IP range and
+    allows no intermediate CAs; a test showed a rogue leaf for a raw IP verified
+    without the exclusion. `LoadCA` refuses a mismatched key or a lost
+    constraint. Leaves live a day, in memory only (`LeafCache` renews them). The
+    writing moved to `CAStep` (below).
+- [x] `proxy.go`, an `http.Handler`:
   - Only `CONNECT` gets through, and only to `api.anthropic.com:443` and from
     the configured client address; anything else gets 403, logged.
   - Inside the tunnel, `POST /v1/messages`, `GET /api/claude_code/settings` and
@@ -650,22 +655,63 @@ of repeating them.
   - real key never written to the log
   - caps enforced
 
-- [ ] `denylog.go`: a JSON-lines denial log under
+  - _Done:_ other paths get 403 and a log line (an allowlist), so the canary
+    will show anything Claude Code needs beyond the three. Requests need exactly
+    one `x-api-key`, equal to the placeholder, and no `Authorization` header.
+    Upstream gets no forwarding headers. Caps per tunnel default to 5,000
+    requests and 2 GiB, since keep-alive lets a whole review share one tunnel;
+    `--max-budget-usd` bounds the spend. A real-binary smoke test on loopback
+    refused a forbidden host and an attacker's key and never logged the key.
+
+- [x] `denylog.go`: a JSON-lines denial log under
       `/var/log/codecheck-sandbox/proxy.jsonl`, with rotation at 10 MB.
       **Test:** the format, and rotation.
-- [ ] `cli/proxy.go`: the hidden `proxy` subcommand.
+  - _Done:_ no header values, long fields cut, mode 0600 through a new
+    `logging.OpenRotating`. **For M11/M12:** with `DynamicUser=yes`, systemd
+    places `LogsDirectory` under `/var/log/private` (root only), so the post-run
+    checks read the denial log as root.
+- [x] `cli/proxy.go`: the hidden `proxy` subcommand.
   - Flags `--listen` and `--client`. No build mode: the guest build runs with no
     network (spike gate).
   - Reads the key from `$CREDENTIALS_DIRECTORY/api-key`.
 
   **Tests** cover flag validation and a missing or empty credential.
 
-- [ ] `assets/host/codecheck-proxy.service`: `DynamicUser=yes`,
+  - _Done:_ also `--ca-cert` and `--deny-log`; reads the CA key from
+    `$CREDENTIALS_DIRECTORY/ca-key`. `--listen` must name one IPv4 address,
+    never a wildcard. A missing, empty or placeholder key gets refused without
+    the value appearing in the error. Shuts down on SIGTERM.
+
+- [x] `assets/host/codecheck-proxy.service`: `DynamicUser=yes`,
       `LoadCredential=api-key:/etc/codecheck-sandbox/api-key`,
       `ProtectSystem=strict`, `PrivateTmp`, `NoNewPrivileges`,
       `RestrictAddressFamilies=AF_INET AF_INET6`, `After=codecheck-net.service`,
       `BindsTo=codecheck-net.service`. Golden test. Then `ProxyServiceStep` and
       `ApiKeyStep`.
+  - _Done:_ the unit also carries `LoadCredential=ca-key:…` (a dynamic user
+    can't read a root-only key), `LogsDirectory=codecheck-sandbox`, an empty
+    `CapabilityBoundingSet`, `PrivateDevices`, the `Protect*` family,
+    `RestrictNamespaces`, `MemoryDenyWriteExecute` and
+    `SystemCallArchitectures=native`; `systemd-analyze verify` accepts it. Four
+    host steps join `hostnet.Steps` after ufw: `host-proxy-binary` (installs a
+    root-owned copy of the running CLI to
+    `/usr/local/lib/codecheck-sandbox/bin/`, checked by SHA-256),
+    `host-proxy-ca` (generates the CA once, so the plan shows the very
+    certificate written; the key shows masked), `host-api-key` (written 0600,
+    masked in the plan; refuses anything not shaped like `sk-ant-…`), and
+    `host-proxy-service`. `Config.Validate` now also checks every path against
+    the manifest allowlist. **For M10:** a new CA means a guest rebuild, since
+    the guest trusts its certificate.
+  - _Review:_ `/code-review medium` found 8 issues; 7 fixed test-first. When the
+    binary, CA or key step applies, `host-proxy-service` restarts the service,
+    so the proxy never keeps old code or secrets. A key the wizard supplies
+    always gets written, so re-running setup replaces a revoked key. The CA
+    check reads the key as root and loads the pair. On enforcing SELinux, the
+    binary and unit files get relabelled as they land. A limit of 16 tunnels at
+    once joins the per-tunnel caps (which bound a tunnel, not a run). Requests
+    the guest cancels log nothing. The denial log stays 0600, since only root
+    can reach it anyway. **Pushed back:** no changelog entries yet, since
+    nothing a user runs reaches the proxy until M12/M13 wire setup up.
 
 ## M8. Guest init and assets (`cmd/cc-guestinit`, `internal/guestinit`, `assets/guest/`)
 

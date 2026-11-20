@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"slices"
 	"strings"
@@ -18,12 +19,18 @@ type rig struct {
 	fs      *system.MemFS
 	run     *system.FakeRunner
 	records []step.Item
+	apiKey  string
 }
 
 func newRig() *rig { return &rig{fs: system.NewMemFS(), run: &system.FakeRunner{}} }
 
 func (r *rig) deps() Deps {
-	return Deps{Config: DefaultConfig(), Runner: r.run, FS: r.fs, Record: func(it step.Item) { r.records = append(r.records, it) }}
+	return Deps{
+		Config: DefaultConfig(), Runner: r.run, FS: r.fs,
+		Record:     func(it step.Item) { r.records = append(r.records, it) },
+		APIKey:     func() (string, error) { return r.apiKey, nil },
+		Executable: func() (string, error) { return "/home/u/bin/codecheck-sandbox", nil },
+	}
 }
 
 func (r *rig) step(t *testing.T, id string) step.Step {
@@ -44,7 +51,7 @@ func (r *rig) step(t *testing.T, id string) step.Step {
 func (r *rig) write(t *testing.T, path, content string, mode uint32) {
 	t.Helper()
 	_ = r.fs.MkdirAll(path[:strings.LastIndexByte(path, '/')], 0o755)
-	if err := r.fs.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := r.fs.WriteFile(path, []byte(content), fs.FileMode(mode)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -101,7 +108,8 @@ func wantArgvs(t *testing.T, r *rig, want ...string) {
 
 func TestStepsOrderPhaseAndTelemetry(t *testing.T) {
 	want := []string{"host-jail-user", "host-jailer-base", "host-rules", "host-nm-unmanaged",
-		"host-tap-service", "host-firewalld", "host-ufw", "host-selinux"}
+		"host-tap-service", "host-firewalld", "host-ufw",
+		"host-proxy-binary", "host-proxy-ca", "host-api-key", "host-proxy-service", "host-selinux"}
 	var got []string
 	steps, _ := Steps(newRig().deps())
 	for _, s := range steps {
@@ -292,8 +300,8 @@ func TestRulesStepUndo(t *testing.T) {
 		"# nft delete table inet codecheck",
 		"# rm -f -- /etc/codecheck-sandbox/rules.nft",
 		"# rm -f -- /var/lib/codecheck-sandbox/rules.sha256",
-		"# rmdir --ignore-fail-on-non-empty -- /etc/codecheck-sandbox",
-		"# rmdir --ignore-fail-on-non-empty -- /var/lib/codecheck-sandbox")
+		"# rmdir --ignore-fail-on-non-empty -- /var/lib/codecheck-sandbox",
+		"# rmdir --ignore-fail-on-non-empty -- /etc/codecheck-sandbox")
 }
 
 func TestNMStepSkipsWithoutNetworkManager(t *testing.T) {

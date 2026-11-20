@@ -64,7 +64,7 @@ func NewRootCommandWith(newClient ClientFactory) *cobra.Command {
 		stub("rebuild", "Rebuild the guest image, for example for a new CodeCheck commit"),
 		stub("uninstall", "Remove everything setup installed"),
 		stub("telemetry", "Show or change anonymous usage and error reporting"),
-		hidden(stub("proxy", "Run the egress proxy (started by systemd)")),
+		hidden(newProxyCommand()),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the version",

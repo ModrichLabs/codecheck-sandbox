@@ -135,6 +135,24 @@ func TestLoggingSurvivesAFailedRotation(t *testing.T) {
 	}
 }
 
+func TestOpenRotatingUsesTheGivenMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "proxy.jsonl")
+	w, err := OpenRotating(path, 64, 0o644)
+	if err != nil {
+		t.Fatalf("OpenRotating: %v", err)
+	}
+	for range 10 {
+		_, _ = w.Write([]byte(`{"reason":"denied-host"}` + "\n"))
+	}
+	_ = w.Close()
+	for _, p := range []string{path, path + ".1"} {
+		info, err := os.Stat(p)
+		if err != nil || info.Mode().Perm() != 0o644 {
+			t.Errorf("%s: %v, %v; want mode 0644", p, info, err)
+		}
+	}
+}
+
 func TestNewCreatesAPrivateFolder(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state", "log")
 	_, closer, err := New(Options{Dir: dir, Redactor: &system.Redactor{}})

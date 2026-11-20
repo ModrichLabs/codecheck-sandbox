@@ -29,6 +29,12 @@ type Config struct {
 	NMPath     string
 	HashPath   string // the expected rule hash, for cc-launch
 	JailerBase string // the jailer's chroot base
+
+	ProxyUnitPath string
+	ProxyBinary   string // the root-owned copy of the CLI the proxy runs
+	APIKeyPath    string
+	CACertPath    string
+	CAKeyPath     string
 }
 
 // DefaultConfig returns the footprint from spec §3.
@@ -46,6 +52,12 @@ func DefaultConfig() Config {
 		NMPath:     "/etc/NetworkManager/conf.d/codecheck-sandbox.conf",
 		HashPath:   "/var/lib/codecheck-sandbox/rules.sha256",
 		JailerBase: "/srv/jailer",
+
+		ProxyUnitPath: "/etc/systemd/system/codecheck-proxy.service",
+		ProxyBinary:   "/usr/local/lib/codecheck-sandbox/bin/codecheck-sandbox",
+		APIKeyPath:    "/etc/codecheck-sandbox/api-key",
+		CACertPath:    "/etc/codecheck-sandbox/ca/ca.crt",
+		CAKeyPath:     "/etc/codecheck-sandbox/ca/ca.key",
 	}
 }
 
@@ -86,10 +98,18 @@ func (c Config) Validate() error {
 	if !tablePattern.MatchString(c.Table) {
 		return fmt.Errorf("table %q: want a plain name", c.Table)
 	}
+	// Every path must sit inside the footprint the manifest allows, which
+	// also keeps them free of spaces and other template-breaking text.
+	for _, p := range []string{c.UnitPath, c.RulesPath, c.NMPath, c.HashPath, c.JailerBase,
+		c.ProxyUnitPath, c.ProxyBinary, c.APIKeyPath, c.CACertPath, c.CAKeyPath} {
+		if err := step.CheckPath(p); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// Render fills the three host templates from c.
+// Render fills the four host templates from c.
 func Render(c Config) ([]step.PlannedFile, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
@@ -99,6 +119,7 @@ func Render(c Config) ([]step.PlannedFile, error) {
 		{"host/codecheck-net.service.tmpl", c.UnitPath},
 		{"host/rules.nft.tmpl", c.RulesPath},
 		{"host/nm-unmanaged.conf.tmpl", c.NMPath},
+		{"host/codecheck-proxy.service.tmpl", c.ProxyUnitPath},
 	} {
 		t, err := template.New(f.tmpl).Option("missingkey=error").ParseFS(assets.Host, f.tmpl)
 		if err != nil {
