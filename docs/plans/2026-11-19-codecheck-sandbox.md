@@ -11,14 +11,13 @@ _Updated 2026-11-21._
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
-  (#7), M6 host network (#9) and M7 egress proxy (#10) into `main`.
-- **In progress:** M8, guest init and assets, on branch `feat/guest-init` in its
-  own worktree. Every M8 task done; `/code-review medium` found 6 issues, all
-  fixed (unmount `/out` before the reboot, port range in `Encode`, folder times,
-  a code disk for selftests, redaction of streamed stderr, `no_output` probes).
-  Next: the M8 pull request, then M9 (launch helper) once it merges. The
-  maintainer chose (2026-11-21) to have the host precompute diff-mode changes,
-  so Claude gets no Bash at all (spec amendment 9).
+  (#7), M6 host network (#9), M7 egress proxy (#10) and M8 guest init (#11) into
+  `main`. Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes,
+  so Claude gets no Bash at all.
+- **In progress:** M9, launch helper, on branch `feat/launch-helper` in its own
+  worktree. Every M9 task done; next come `/code-review medium`, the M9 pull
+  request, then M10 (guest build) once it merges. Untested until a real boot
+  (M15): `--parent-cgroup` inside the scope.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -966,10 +965,28 @@ of repeating them.
     existing import guard now covers `cc-launch` (two helpers checked). **For
     M11:** stream `cc-launch`'s stderr for live status, and map its exit codes
     to messages.
-- [ ] `assets/host/sudoers`:
+- [x] `assets/host/sudoers`:
       `%<user> ALL=(root) NOPASSWD: /usr/local/lib/codecheck-sandbox/bin/cc-launch`.
       `LauncherStep` installs the binary root-owned with mode 755, and validates
       the sudoers file with `visudo -cf` before moving it into place.
+  - _Done:_ three `hostnet` steps before `host-selinux`. `host-launcher`
+    installs `cc-launch` from beside the running CLI binary through a
+    `binaryStep` helper now shared with `host-proxy-binary` (hash check,
+    recorded folders, relabel). `host-lock` writes
+    `/etc/tmpfiles.d/codecheck-sandbox.conf` (`d /run/codecheck-sandbox 0755`,
+    `f …/lock 0644`, root) and runs `systemd-tmpfiles --create`, settling M3's
+    note; checked with a user-level `systemd-tmpfiles` run. `host-sudoers`
+    renders `assets/host/sudoers.tmpl` as
+    `<user> ALL=(root) NOPASSWD: …/bin/cc-launch` (a user, not the plan's `%`
+    group), writes it to `codecheck-sandbox.new` (sudo ignores names with a
+    dot), runs `visudo -cf`, then `mv -f -T` into place, or removes the draft on
+    failure. A test runs the real `visudo -cf` on the rendered rule; a broken
+    rule fails it. `Deps.User` must match the plain account pattern and not be
+    root. The manifest allows the tmpfiles entry and `/run/codecheck-sandbox`;
+    spec §3 lists them. Only sudo and sudo-rs read the drop-in: doas and run0
+    users get a prompt per run. **For M13:** set `Deps.User` from the invoking
+    account. **For M15:** release archives must ship `cc-launch` beside
+    `codecheck-sandbox`.
 
 ## M10. Guest build (`internal/guest`)
 

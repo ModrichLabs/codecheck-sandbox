@@ -31,6 +31,7 @@ func (r *rig) deps() Deps {
 		Record:     func(it step.Item) { r.records = append(r.records, it) },
 		APIKey:     func() (string, error) { return r.apiKey, nil },
 		Executable: func() (string, error) { return "/home/u/bin/codecheck-sandbox", nil },
+		User:       "u",
 	}
 }
 
@@ -110,7 +111,8 @@ func wantArgvs(t *testing.T, r *rig, want ...string) {
 func TestStepsOrderPhaseAndTelemetry(t *testing.T) {
 	want := []string{"host-jail-user", "host-jailer-base", "host-rules", "host-nm-unmanaged",
 		"host-tap-service", "host-firewalld", "host-ufw",
-		"host-proxy-binary", "host-proxy-ca", "host-api-key", "host-proxy-service", "host-selinux"}
+		"host-proxy-binary", "host-proxy-ca", "host-api-key", "host-proxy-service",
+		"host-launcher", "host-lock", "host-sudoers", "host-selinux"}
 	var got []string
 	steps, _ := Steps(newRig().deps())
 	for _, s := range steps {

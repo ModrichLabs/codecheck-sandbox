@@ -74,7 +74,10 @@ sequenceDiagram
 5. **Root on the host.** Only `cc-launch` runs as root without a password. It
    takes a run id and nothing else, and before each boot it checks the kernel
    and root disk hashes, the firewall rules' hash, and that the real proxy
-   service owns the proxy port. Any mismatch stops the run.
+   service owns the proxy port. Any mismatch stops the run. Afterwards it reads
+   the output disk, which the guest wrote, only through `debugfs` running as
+   `nobody` with no capabilities, and copies a fixed list of files, each with a
+   size cap.
 6. **Claude Code inside the VM.** It runs with `--restricted`, an exact
    `--tools Read,Grep,Glob,Agent,Skill` list, `--strict-mcp-config` and a spend
    cap. That layer helps, but the design never depends on it: the boundaries

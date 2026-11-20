@@ -82,12 +82,14 @@ var (
 		"/etc/systemd/system/codecheck-net.service",
 		"/etc/systemd/system/codecheck-proxy.service",
 		"/etc/NetworkManager/conf.d/codecheck-sandbox.conf",
+		"/etc/tmpfiles.d/codecheck-sandbox.conf",
 	}
 	allowedDirs = []string{
 		"/usr/local/lib/codecheck-sandbox",
 		"/var/lib/codecheck-sandbox",
 		"/etc/codecheck-sandbox",
 		"/srv/jailer",
+		"/run/codecheck-sandbox",
 	}
 )
 

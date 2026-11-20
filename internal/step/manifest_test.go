@@ -76,6 +76,9 @@ func TestManifestAllowsTheFootprint(t *testing.T) {
 		"/etc/systemd/system/codecheck-net.service",
 		"/etc/systemd/system/codecheck-proxy.service",
 		"/etc/NetworkManager/conf.d/codecheck-sandbox.conf",
+		"/etc/tmpfiles.d/codecheck-sandbox.conf",
+		"/run/codecheck-sandbox",
+		"/run/codecheck-sandbox/lock",
 	}
 	for _, p := range good {
 		if err := CheckPath(p); err != nil {
