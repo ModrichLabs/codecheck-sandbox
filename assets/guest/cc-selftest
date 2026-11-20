@@ -88,9 +88,13 @@ host_ports() {
 	echo
 }
 
-# has_output CMD...: succeeds when CMD prints anything.
-has_output() {
-	[[ -n $("$@" 2>/dev/null) ]]
+# no_output CMD...: succeeds only when CMD works and prints nothing, so a
+# broken command (a missing tool, a renamed link) fails the probe instead of
+# passing it.
+no_output() {
+	local out
+	out=$("$@" 2>&1) || return 1
+	[[ -z $out ]]
 }
 
 main() {
@@ -116,8 +120,8 @@ main() {
 	done
 
 	# Address and routing controls.
-	blocked no-ipv6 "no IPv6 address, link-local included" has_output ip -6 -o addr show dev "$guest_nic"
-	blocked no-default-route "no default route" has_output ip -4 route show default
+	allowed no-ipv6 "no IPv6 address, link-local included" no_output ip -6 -o addr show dev "$guest_nic"
+	allowed no-default-route "no default route" no_output ip -4 route show default
 	blocked no-spoofed-source "no extra source address" ip addr add 172.16.0.3/30 dev "$guest_nic"
 	blocked no-sudo "no way back to root" sudo -n true
 

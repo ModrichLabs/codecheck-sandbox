@@ -125,8 +125,9 @@ func (rw *redactingWriter) Close() error {
 	return err
 }
 
-// Runner wraps inner so that error messages and stderr never carry a secret.
-// Stdout stays untouched, since callers may need to read a secret back.
+// Runner wraps inner so that error messages and stderr, captured or streamed,
+// never carry a secret. Stdout stays untouched, since callers may need to
+// read a secret back.
 func (r *Redactor) Runner(inner Runner) Runner { return redactingRunner{r: r, inner: inner} }
 
 type redactingRunner struct {
@@ -135,7 +136,17 @@ type redactingRunner struct {
 }
 
 func (rr redactingRunner) Run(ctx context.Context, c Cmd) (Result, error) {
+	var streamed io.WriteCloser
+	if c.Stderr != nil {
+		streamed = rr.r.Writer(c.Stderr)
+		c.Stderr = streamed
+	}
 	res, err := rr.inner.Run(ctx, c)
+	if streamed != nil {
+		if cerr := streamed.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}
 	res.Stderr = rr.r.Redact(res.Stderr)
 	if err != nil {
 		err = &redactedError{msg: rr.r.RedactString(err.Error()), err: err}

@@ -17,6 +17,12 @@
       "is_read_only": true
     },
     {
+      "drive_id": "code",
+      "path_on_host": "code.ext4",
+      "is_root_device": false,
+      "is_read_only": true
+    },
+    {
       "drive_id": "out",
       "path_on_host": "out.ext4",
       "is_root_device": false,

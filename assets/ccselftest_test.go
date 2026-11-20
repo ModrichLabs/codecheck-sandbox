@@ -65,6 +65,25 @@ func TestSelftestAllPassExitsZero(t *testing.T) {
 	}
 }
 
+// A probe that checks for silence must not pass because its command broke,
+// such as ip naming a link that doesn't exist.
+func TestSelftestNoOutputNeedsTheCommandToWork(t *testing.T) {
+	out, _ := sourceSelftest(t, `
+no_output true && echo quiet-ok
+no_output false || echo broken-fails
+no_output echo noise || echo noisy-fails
+no_output sh -c 'echo gone >&2; exit 1' || echo stderr-fails`)
+	for _, want := range []string{"quiet-ok", "broken-fails", "noisy-fails", "stderr-fails"} {
+		if !strings.Contains(out, want+"\n") {
+			t.Errorf("output lacks %s:\n%s", want, out)
+		}
+	}
+	s := readGuest(t, "cc-selftest")
+	if strings.Contains(s, "has_output") {
+		t.Error("cc-selftest still uses has_output, which passes when ip fails")
+	}
+}
+
 func TestSelftestPortList(t *testing.T) {
 	out, _ := sourceSelftest(t, `host_ports`, "CC_PROBE_PORTS=8080,5432,22")
 	ports := strings.Fields(out)

@@ -115,6 +115,26 @@ func TestCopyTreeKeepsOwnersModesAndLinks(t *testing.T) {
 	}
 }
 
+func TestCopyTreeKeepsFolderTimes(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(src, "usr/share/doc/a"), "a", 0o644)
+	old := time.Date(2024, 4, 25, 12, 0, 0, 0, time.UTC)
+	for _, d := range []string{"usr/share/doc", "usr/share", "usr"} {
+		if err := os.Chtimes(filepath.Join(src, d), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := CopyTree(src, dst, newFakeOps()); err != nil {
+		t.Fatalf("CopyTree: %v", err)
+	}
+	// Children land after their folder, so the folder's times must come last.
+	for _, d := range []string{"usr", "usr/share", "usr/share/doc"} {
+		if fi, _ := os.Stat(filepath.Join(dst, d)); !fi.ModTime().Equal(old) {
+			t.Errorf("%s: mtime %v, want %v", d, fi.ModTime(), old)
+		}
+	}
+}
+
 func TestCopyTreeRefusesAnExistingTarget(t *testing.T) {
 	src, dst := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(src, "passwd"), "new", 0o644)

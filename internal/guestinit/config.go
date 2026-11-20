@@ -117,6 +117,11 @@ func (c Config) Validate() error {
 	if !runIDPattern.MatchString(c.RunID) {
 		return fmt.Errorf("run_id %q: want lower-case letters, digits and dashes", c.RunID)
 	}
+	for _, p := range c.ProbePorts {
+		if p < 1 || p > 65535 {
+			return fmt.Errorf("probe port %d: want 1 to 65535", p)
+		}
+	}
 	switch c.Mode {
 	case ModeBuild, ModeSelftest:
 		if c.MaxBudgetUSD != "" || c.Scope != "" || c.Base != "" {

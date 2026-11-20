@@ -20,7 +20,7 @@ func vmConfigs() map[string]VMConfig {
 		},
 		"vm-selftest.json": {
 			Mode: ModeSelftest, Kernel: "vmlinux", RootDisk: "rootfs.ext4", ConfigDisk: "config.img",
-			OutDisk: "out.ext4", VCPUs: 1, MemMiB: 512, Tap: "cc-tap0",
+			CodeDisk: "code.ext4", OutDisk: "out.ext4", VCPUs: 1, MemMiB: 512, Tap: "cc-tap0",
 		},
 		"vm-build.json": {
 			Mode: ModeBuild, Kernel: "vmlinux", Initrd: "init.cpio", BaseDisk: "base.squashfs",
@@ -97,7 +97,7 @@ func TestRenderVMDriveOrderMatchesTheGuest(t *testing.T) {
 	}
 	want := map[string][]drive{
 		"vm-review.json":   {{"rootfs.ext4", true, true}, {"config.img", false, true}, {"code.ext4", false, true}, {"out.ext4", false, false}},
-		"vm-selftest.json": {{"rootfs.ext4", true, true}, {"config.img", false, true}, {"out.ext4", false, false}},
+		"vm-selftest.json": {{"rootfs.ext4", true, true}, {"config.img", false, true}, {"code.ext4", false, true}, {"out.ext4", false, false}},
 		// No root device: the build boots its initramfs.
 		"vm-build.json": {{"base.squashfs", false, true}, {"config.img", false, true}, {"inputs.ext4", false, true}, {"rootfs.ext4", false, false}},
 	}

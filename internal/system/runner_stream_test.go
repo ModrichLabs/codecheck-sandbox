@@ -28,6 +28,23 @@ func TestExecRunnerStreamsToWriters(t *testing.T) {
 	}
 }
 
+func TestRedactingRunnerRedactsStreamedStderr(t *testing.T) {
+	r := &Redactor{}
+	r.Add(testKey)
+	var errOut bytes.Buffer
+	_, err := r.Runner(ExecRunner{}).Run(context.Background(), Cmd{
+		Name:   "sh",
+		Args:   []string{"-c", `printf 'bad key %s\n' "$1" >&2`, "sh", testKey},
+		Stderr: &errOut,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(errOut.String(), testKey) || !strings.Contains(errOut.String(), "bad key") {
+		t.Errorf("streamed stderr = %q, want it redacted", errOut.String())
+	}
+}
+
 func TestExecRunnerRunsInDir(t *testing.T) {
 	dir := t.TempDir()
 	res := runOK(t, Cmd{Name: "pwd", Dir: dir})

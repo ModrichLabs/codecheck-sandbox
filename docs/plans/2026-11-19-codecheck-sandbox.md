@@ -13,9 +13,12 @@ _Updated 2026-11-21._
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7), M6 host network (#9) and M7 egress proxy (#10) into `main`.
 - **In progress:** M8, guest init and assets, on branch `feat/guest-init` in its
-  own worktree; the next unticked M8 task comes next. The maintainer chose
-  (2026-11-21) to have the host precompute diff-mode changes, so Claude gets no
-  Bash at all (spec amendment 9, recorded with the `cc-claude` task).
+  own worktree. Every M8 task done; `/code-review medium` found 6 issues, all
+  fixed (unmount `/out` before the reboot, port range in `Encode`, folder times,
+  a code disk for selftests, redaction of streamed stderr, `no_output` probes).
+  Next: the M8 pull request, then M9 (launch helper) once it merges. The
+  maintainer chose (2026-11-21) to have the host precompute diff-mode changes,
+  so Claude gets no Bash at all (spec amendment 9).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -735,16 +738,19 @@ of repeating them.
   - _Done:_ the `Sys` interface (mount, files, device read, sync) plus
     `system.Runner`, which gained `Stdout`/`Stderr` writers, `Dir` and `Chroot`
     (`PrivRunner` refuses them on root commands). Drive order: `vda` root, `vdb`
-    config, then for a review `vdc` code and `vdd` output, for a selftest `vdc`
-    output. The code disk mounts `ro,nosuid,nodev,noexec,noload` (no journal
-    replay); tmpfs covers `/tmp`, `/run`, `/var/tmp` and the agent's 0700 home.
-    The agent runs as uid 10001 via
+    config, `vdc` code and `vdd` output, for reviews and selftests alike (after
+    the code review: a selftest's code disk can sit empty, and its
+    `work-read-only` probe then checks the real mount). The code disk mounts
+    `ro,nosuid,nodev,noexec,noload` (no journal replay); tmpfs covers `/tmp`,
+    `/run`, `/var/tmp` and the agent's 0700 home. The agent runs as uid 10001
+    via
     `setpriv --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all`,
     with a clean environment holding only `PATH`, `HOME` and `CC_*` settings;
     the init (as root) opens `/out/stream.jsonl` and `/out/stderr.log` (0600),
-    so the agent can't touch `/out` itself. **For M9:** attach drives in that
-    order, and cap the copies off `/out`, since the guest caps nothing but the
-    disk size.
+    so the agent can't touch `/out` itself. After the job it writes `exit-code`,
+    syncs and unmounts `/out`, since `debugfs` ignores the journal. **For M9:**
+    attach drives in that order, and cap the copies off `/out`, since the guest
+    caps nothing but the disk size.
 - [x] `internal/guestinit/build.go`: as root, copy the base tree from the
       squashfs onto the target disk (keeping owners, modes, setuid and links),
       add the inputs disk's files (`claude`, the plugin, `cc-claude`,

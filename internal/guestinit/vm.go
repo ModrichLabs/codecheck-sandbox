@@ -117,13 +117,8 @@ func (c VMConfig) layout() ([]vmDrive, string, error) {
 			"inputs disk": c.InputsDisk, "target disk": c.TargetDisk}); err != nil {
 			return nil, "", err
 		}
-		if c.Mode == ModeSelftest {
-			if err := none(map[string]string{"code disk": c.CodeDisk}); err != nil {
-				return nil, "", err
-			}
-		}
 		for name, v := range map[string]string{"a kernel": c.Kernel, "a root disk": c.RootDisk,
-			"a config disk": c.ConfigDisk, "an output disk": c.OutDisk} {
+			"a config disk": c.ConfigDisk, "a code disk": c.CodeDisk, "an output disk": c.OutDisk} {
 			if err := need(name, v); err != nil {
 				return nil, "", err
 			}
@@ -131,15 +126,14 @@ func (c VMConfig) layout() ([]vmDrive, string, error) {
 		if !vmTapPattern.MatchString(c.Tap) {
 			return nil, "", fmt.Errorf("tap %q: want cc-tap and a number", c.Tap)
 		}
-		drives := []vmDrive{{"root", c.RootDisk, true, true}, {"config", c.ConfigDisk, false, true}}
-		if c.Mode == ModeReview {
-			if err := need("a code disk", c.CodeDisk); err != nil {
-				return nil, "", err
-			}
-			drives = append(drives, vmDrive{"code", c.CodeDisk, false, true})
-		}
-		drives = append(drives, vmDrive{"out", c.OutDisk, false, false})
-		return drives, baseBootArgs + " rootfstype=ext4 init=/usr/local/sbin/cc-guestinit", nil
+		// A selftest gets a code disk too (an empty one serves), so its
+		// work-read-only probe checks the mount a review gets.
+		return []vmDrive{
+			{"root", c.RootDisk, true, true},
+			{"config", c.ConfigDisk, false, true},
+			{"code", c.CodeDisk, false, true},
+			{"out", c.OutDisk, false, false},
+		}, baseBootArgs + " rootfstype=ext4 init=/usr/local/sbin/cc-guestinit", nil
 	case ModeBuild:
 		if err := none(map[string]string{"root disk": c.RootDisk, "code disk": c.CodeDisk,
 			"output disk": c.OutDisk, "tap": c.Tap}); err != nil {

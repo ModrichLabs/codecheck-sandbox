@@ -285,8 +285,15 @@ func inChroot(ctx context.Context, e Env, target string) (err error) {
 // among them: the agent never needs more than plain permissions give.
 func CopyTree(src, dst string, ops FileOps) error {
 	type inode struct{ dev, ino uint64 }
+	type dirTimes struct {
+		path string
+		st   unix.Stat_t
+	}
 	seen := map[inode]string{}
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	// Each child created in a folder resets the folder's times, so they go
+	// on after the walk, deepest first.
+	var dirs []dirTimes
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -301,15 +308,16 @@ func CopyTree(src, dst string, ops FileOps) error {
 			return err
 		}
 
-		if rel == "." {
-			return applyMeta(out, fi, &stt, ops)
-		}
 		mode := fi.Mode()
 		switch {
 		case mode.IsDir():
-			if err := os.Mkdir(out, 0o700); err != nil {
-				return err
+			if rel != "." {
+				if err := os.Mkdir(out, 0o700); err != nil {
+					return err
+				}
 			}
+			dirs = append(dirs, dirTimes{out, stt})
+			return applyOwnerMode(out, fi, &stt, ops)
 		case mode&os.ModeSymlink != 0:
 			target, err := os.Readlink(path)
 			if err != nil {
@@ -338,19 +346,28 @@ func CopyTree(src, dst string, ops FileOps) error {
 				return fmt.Errorf("%s: %w", rel, err)
 			}
 		}
-		return applyMeta(out, fi, &stt, ops)
+		if err := applyOwnerMode(out, fi, &stt, ops); err != nil {
+			return err
+		}
+		return setTimes(out, &stt)
 	})
+	if err != nil {
+		return err
+	}
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := setTimes(dirs[i].path, &dirs[i].st); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// applyMeta sets owner, then mode (chown clears setuid), then times.
-func applyMeta(out string, fi os.FileInfo, st *unix.Stat_t, ops FileOps) error {
+// applyOwnerMode sets owner, then mode, since chown clears setuid.
+func applyOwnerMode(out string, fi os.FileInfo, st *unix.Stat_t, ops FileOps) error {
 	if err := ops.Lchown(out, int(st.Uid), int(st.Gid)); err != nil {
 		return err
 	}
-	if err := ops.Chmod(out, fi.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky)); err != nil {
-		return err
-	}
-	return setTimes(out, st)
+	return ops.Chmod(out, fi.Mode()&(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky))
 }
 
 // setTimes copies the access and modification times without following a

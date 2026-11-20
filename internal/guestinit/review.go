@@ -14,12 +14,12 @@ import (
 
 // The drive layout, in the order vm.json attaches the drives. The config
 // device always comes second, so the init can read it before it knows the
-// mode.
+// mode. Reviews and selftests share one layout, so a selftest checks the
+// same code-disk mount a review gets.
 const (
-	ConfigDevice   = "/dev/vdb"
-	reviewCodeDisk = "/dev/vdc"
-	reviewOutDisk  = "/dev/vdd"
-	selftestOut    = "/dev/vdc"
+	ConfigDevice = "/dev/vdb"
+	jobCodeDisk  = "/dev/vdc"
+	jobOutDisk   = "/dev/vdd"
 )
 
 // The agent account the build creates, by number, so the init never parses
@@ -85,16 +85,16 @@ func ReadConfig(s Sys) (Config, error) {
 // exit code; an error means the job never ran or its result could not be
 // saved.
 func RunJob(ctx context.Context, e Env, c Config) (int, error) {
-	var program, outDisk string
+	var program string
 	switch c.Mode {
 	case ModeReview:
-		program, outDisk = ccClaudePath, reviewOutDisk
+		program = ccClaudePath
 	case ModeSelftest:
-		program, outDisk = selftestPath, selftestOut
+		program = selftestPath
 	default:
 		return 0, fmt.Errorf("RunJob: mode %q runs no job", c.Mode)
 	}
-	if err := mountJobDisks(e.Sys, c.Mode, outDisk); err != nil {
+	if err := mountJobDisks(e.Sys); err != nil {
 		return 0, err
 	}
 	if err := setUpNetwork(ctx, e); err != nil {
@@ -137,12 +137,17 @@ func RunJob(ctx context.Context, e Env, c Config) (int, error) {
 		return 0, err
 	}
 	e.Sys.Sync()
+	// The host reads the output disk with debugfs, which ignores the
+	// journal; unmounting writes everything back to its home blocks.
+	if err := e.Sys.Unmount("/out"); err != nil {
+		return 0, fmt.Errorf("unmount /out: %w", err)
+	}
 	return res.Code, nil
 }
 
 // mountJobDisks puts a tmpfs over every path the job may write, then mounts
-// the code disk (reviews only) and the output disk.
-func mountJobDisks(s Sys, mode Mode, outDisk string) error {
+// the code disk and the output disk.
+func mountJobDisks(s Sys) error {
 	type mnt struct {
 		source, target, fstype string
 		flags                  uintptr
@@ -157,12 +162,11 @@ func mountJobDisks(s Sys, mode Mode, outDisk string) error {
 		{"tmpfs", "/var/tmp", "tmpfs", tmp, "mode=1777"},
 		{"tmpfs", AgentHome, "tmpfs", tmp, "mode=0700,uid=" + agent + ",gid=" + agent},
 	}
-	if mode == ModeReview {
-		// noload skips journal replay, so a crafted journal can't write to
-		// the read-only disk.
-		mounts = append(mounts, mnt{reviewCodeDisk, "/work", "ext4", disk | unix.MS_RDONLY, "noload"})
-	}
-	mounts = append(mounts, mnt{outDisk, "/out", "ext4", disk, ""})
+	// noload skips journal replay, so a crafted journal can't write to the
+	// read-only disk.
+	mounts = append(mounts,
+		mnt{jobCodeDisk, "/work", "ext4", disk | unix.MS_RDONLY, "noload"},
+		mnt{jobOutDisk, "/out", "ext4", disk, ""})
 	for _, m := range mounts {
 		if err := s.Mount(m.source, m.target, m.fstype, m.flags, m.data); err != nil {
 			return fmt.Errorf("mount %s: %w", m.target, err)

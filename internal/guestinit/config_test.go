@@ -119,6 +119,12 @@ func TestEncodeRefusesInvalidConfig(t *testing.T) {
 	if _, err := Encode(Config{Mode: ModeReview, RunID: "r1"}); err == nil {
 		t.Error("Encode accepted a review with no scope or budget")
 	}
+	// Whatever Encode writes, the guest's Parse must accept.
+	for _, p := range []int{0, -1, 65536} {
+		if _, err := Encode(Config{Mode: ModeSelftest, RunID: "s1", ProbePorts: []int{80, p}}); err == nil {
+			t.Errorf("Encode accepted probe port %d", p)
+		}
+	}
 }
 
 func equalInts(a, b []int) bool {

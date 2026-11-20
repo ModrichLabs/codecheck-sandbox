@@ -144,6 +144,11 @@ func TestRunJobReview(t *testing.T) {
 	if s.synced == 0 {
 		t.Error("RunJob never synced the output disk")
 	}
+	// The host reads the disk with debugfs, which ignores the journal: only
+	// an unmount puts the new files in their home blocks.
+	if !slices.Equal(s.unmounts, []string{"/out"}) {
+		t.Errorf("unmounts = %v, want /out", s.unmounts)
+	}
 }
 
 func TestRunJobSelftest(t *testing.T) {
@@ -156,11 +161,16 @@ func TestRunJobSelftest(t *testing.T) {
 	if code, err := RunJob(context.Background(), Env{Sys: s, Run: f}, cfg); err != nil || code != 0 {
 		t.Fatalf("RunJob = %d, %v", code, err)
 	}
-	if _, ok := s.mountAt("/work"); ok {
-		t.Error("selftest mounted a code disk")
+	// A selftest mounts a code disk exactly as a review does, so the
+	// work-read-only probe tests the real mount.
+	if m, ok := s.mountAt("/work"); !ok || m.Source != "/dev/vdc" || m.Flags&unix.MS_RDONLY == 0 || m.Data != "noload" {
+		t.Errorf("selftest /work = %+v, want /dev/vdc read-only with noload", m)
 	}
-	if out, _ := s.mountAt("/out"); out.Source != "/dev/vdc" {
-		t.Errorf("selftest output disk = %q, want /dev/vdc", out.Source)
+	if out, _ := s.mountAt("/out"); out.Source != "/dev/vdd" {
+		t.Errorf("selftest output disk = %q, want /dev/vdd", out.Source)
+	}
+	if !slices.Contains(s.unmounts, "/out") {
+		t.Error("selftest left /out mounted")
 	}
 	job := f.Calls()[3]
 	if job.Args[len(job.Args)-1] != "/usr/local/bin/cc-selftest" {
