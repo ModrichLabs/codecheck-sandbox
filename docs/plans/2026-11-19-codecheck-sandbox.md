@@ -902,7 +902,7 @@ of repeating them.
     `images.sha256` in that format; **for M11:** fill the run folder with
     exactly those files.
 
-- [ ] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
+- [x] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
       images) and copies (run disks), then build the
       `systemd-run --scope -p RuntimeMaxSec=… jailer …` argv from the spike S1
       flags. **Golden test** of the argv.
@@ -910,6 +910,25 @@ of repeating them.
     `cgroup.events` to show `populated 0` before cleanup (spike S1, option b).
     **Test:** cleanup never starts while the fake cgroup still reports
     `populated 1`.
+  - _Done:_ `Stage` refuses a jail folder that already exists, binds the
+    installed kernel and root disk read-only (bind, then remount
+    `ro,nosuid,nodev,noexec`), copies `config.img` and `code.ext4` (or the
+    build's four inputs) at 0444, and makes the writable disk itself: a sparse
+    `out.ext4` (512 MiB) or build target `rootfs.ext4` (3 GiB), `mkfs.ext4`,
+    owned by `fcjail`, 0600. So the CLI never uploads an output disk (a change
+    from M11's `disks.go`). `vm.json` comes from `guestinit.RenderVM`. Each mode
+    has fixed vCPUs, memory and a time limit (review 60 min, selftest 10, build
+    30). The argv adds `--unit=codecheck-<id>`, `--slice=system.slice`,
+    `--collect`, and `--parent-cgroup system.slice/codecheck-<id>.scope`, so
+    Firecracker's cgroup sits inside the scope that `RuntimeMaxSec` kills and
+    `Wait` watches; `fsize` matches the writable disk. `Wait` treats a vanished
+    scope as empty, kills the scope with `systemctl kill --signal=SIGKILL` past
+    the limit plus a tenth, and returns `ErrTimeout`, or also `ErrStuck` if it
+    stays populated 30 s after the kill (the first test run hung on that case).
+    `Cleanup` unmounts the binds and removes the jail only when
+    `/proc/self/mountinfo` shows no mount left inside it. **Untested on a real
+    host:** `--parent-cgroup` inside a scope (spike S1 finding 8 left it open);
+    **for M15:** boot a VM and check `systemd-cgls` before trusting it.
 - [ ] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
       capped at 200 MB, `stderr.log` at 5 MB, `exit-code` at 16 bytes),
       `debugfs -R "cat /<f>"`, run as `nobody` through `setpriv`. Then clean up

@@ -85,6 +85,10 @@ type Env struct {
 	Run   system.Runner // commands run as root already: never set Cmd.Root
 	Proc  ProcFS
 	Owner int // the uid every trusted file must belong to: 0 outside tests
+
+	// JailUID and JailGID name the unprivileged account Firecracker runs
+	// as (fcjail); main looks them up.
+	JailUID, JailGID int
 }
 
 // Job describes a run that passed every check.
