@@ -9,11 +9,12 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
-- **In progress:** M3, the step engine (`internal/step`), on branch
-  `feat/step-engine` in its own worktree. Every M3 task done, and the
-  `/code-review medium` findings fixed; next comes the M3 pull request, then M3a
-  (logging and telemetry) on a new branch once it merges.
+- **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
+  `main`.
+- **In progress:** M3a, logging and telemetry, on branch
+  `feat/logging-telemetry` in its own worktree. `logging.go` done; next comes
+  `telemetry/events.go`. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go`
+  v1.40.1 (the newest release at least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -286,11 +287,15 @@ of repeating them.
 
 ## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
 
-- [ ] `logging/logging.go`: a `slog` JSON handler that writes through
+- [x] `logging/logging.go`: a `slog` JSON handler that writes through
       `system.Redactor` to a rotating file (10 MB, five kept), plus an optional
       `charmbracelet/log` tee for `--debug`. **Tests:** a registered secret
       never appears in the file; rotation keeps five files; the level follows
       `--debug`.
+  - _Done:_ `New(Options{Dir, Redactor, Debug, Console, MaxSize})`. Five files
+    in all (`codecheck-sandbox.log` plus `.1` to `.4`), each 0600 in a 0700
+    folder; rotation uses the standard library. The `--debug` console copy
+    (`charm.land/log/v2`) goes through the Redactor too.
 - [ ] `telemetry/events.go`: typed event structs for usage, errors, environment
       profile and security signals, with enum and band types (`DurationBand`,
       `CostBand`, `SizeBand`). **Tests:** band edges.
