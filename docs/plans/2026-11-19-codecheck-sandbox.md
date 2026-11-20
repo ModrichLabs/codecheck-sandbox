@@ -13,8 +13,8 @@ _Updated 2026-11-20._
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
   `feat/logging-telemetry` in its own worktree. `logging.go`,
-  `telemetry/events.go`, `telemetry/allowlist_test.go` and
-  `telemetry/exception.go` done; next comes `telemetry/consent.go`. Pins:
+  `telemetry/events.go`, `telemetry/allowlist_test.go`, `telemetry/exception.go`
+  and `telemetry/consent.go` done; next comes `telemetry/client.go`. Pins:
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
   least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -329,9 +329,14 @@ of repeating them.
     name, never the build path. Frame fields have their own validating types,
     and the allowlist test covers them. Later milestones that add sentinels
     should add them to `kindRules`.
-- [ ] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
+- [x] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
       `--no-telemetry`, `--yes`, TTY and `config.toml`; create or delete the
       install id. **Tests:** a table of every combination.
+  - _Done:_ `Resolve(ConsentInputs)` returns `On`, `Off` or `Ask` (no stored
+    choice, a TTY and no `--yes`; only the setup wizard asks, and other commands
+    treat it as `Off`). The config arrives as a `*bool`, so M13's `config.go`
+    supplies it. `EnsureInstallID` keeps a UUIDv4 in `telemetry/install-id`
+    (0600) and replaces a tampered file; `Forget` deletes the id and the queue.
 - [ ] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
       `Noop` and `PostHog`. Queue to
       `~/.local/state/codecheck-sandbox/telemetry/queue.jsonl` (1 MB cap, oldest
