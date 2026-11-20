@@ -1,0 +1,1 @@
+zypper --non-interactive install --no-recommends nftables e2fsprogs squashfs git iproute2 gpg2

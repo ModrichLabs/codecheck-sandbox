@@ -1,0 +1,1 @@
+dnf install -y nftables e2fsprogs squashfs-tools git iproute gnupg2

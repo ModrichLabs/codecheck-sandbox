@@ -1,0 +1,1 @@
+pacman -S --needed --noconfirm nftables e2fsprogs squashfs-tools git iproute2 gnupg

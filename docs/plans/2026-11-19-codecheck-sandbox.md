@@ -9,14 +9,14 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
-  `main`.
-- **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. Every M3a task done and the
-  `/code-review medium` findings handled; next come the M3a pull request, then
-  M4 (platform and distro) on a new branch once it merges. Pins:
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
-  least two weeks old on 2026-11-20).
+- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
+  logging and telemetry (#4) into `main`.
+- **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
+  its own worktree. Every M4 task done and the `/code-review medium` findings
+  handled; next come the M4 pull request, then M5 (pins and downloads) on a new
+  branch once it merges.
+- **Dependency pins:** choose versions at least two weeks old;
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -389,14 +389,29 @@ of repeating them.
 
 ## M4. Platform and distro (`internal/platform`, `internal/distro`)
 
-- [ ] `distro/osrelease.go`: parse `/etc/os-release`, then map `ID` and
+- [x] `distro/osrelease.go`: parse `/etc/os-release`, then map `ID` and
       `ID_LIKE` to a family: arch, debian, fedora, suse or unknown. Table-driven
       tests use real samples in
       `testdata/os-release/{arch,omarchy,ubuntu-24.04,debian-12,fedora-41,rhel-9,opensuse-tumbleweed,alpine}`.
-- [ ] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
+  - _Done:_ the SUSE family takes the name `opensuse`, matching the telemetry
+    enum. `Detect` falls back to `/usr/lib/os-release`. The `omarchy` sample
+    comes from the maintainer's machine; the others follow each release's
+    published os-release, written from reference rather than copied from a
+    running system.
+- [x] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
       `squashfs-tools`, `git`, `iproute2` and `gnupg` to package names and an
       install argv for each family. Golden test of every family's argv.
-- [ ] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
+  - _Done:_ `InstallCommands` returns a list of argvs, since Debian runs
+    `apt-get update` first; it sets `DEBIAN_FRONTEND` through `env` because root
+    commands carry no `Env`. Arch uses `pacman -S --needed` without `-y`, to
+    avoid a partial upgrade; the review suggested `-Syu`, but setup should never
+    upgrade the whole system on its own (least of all under `--yes`), so
+    `requirements.md` asks Arch users to upgrade first instead. An empty package
+    list gives no commands. An unknown family returns `ErrUnknownFamily` naming
+    every package. A test checks every installable name against the manifest's
+    package allowlist. Golden files: `go test ./internal/distro -update`
+    rewrites them.
+- [x] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
       so it reports through the engine; checks that only read have `Apply`
       return "fix manually: …".
   - **CPU architecture:** x86_64 only; aarch64 gets a clear "deferred" message.
@@ -409,6 +424,23 @@ of repeating them.
   - **Security module:** SELinux or AppArmor, and its mode.
 
   **Tests:** each check against `MemFS` fixtures.
+
+  - _Done:_ nine checks with IDs `platform-*`, registered with telemetry. An
+    `Env` injects the filesystem, a `Stat` with owner and mode (which `MemFS`
+    cannot model), free space, the architecture and `LookPath`; `DefaultEnv`
+    reads the real host. `fcjail` doesn't exist yet in this phase, so the KVM
+    check needs a character device open to all, or to group `kvm` with read and
+    write. RAM accepts 7.5 GiB `MemTotal` and up, since "8 GB" machines report
+    less. Added a privilege-tool check from spec §7. `Inspect` returns the
+    firewall managers and security module for host setup and telemetry; on the
+    maintainer's machine it found ufw and Docker, and every check passed. A
+    failing read-only check returns `ErrManual` with a fix-it hint from `Plan`,
+    so the engine fails it before any confirm prompt and a dry run reports it.
+    The KVM group resolves through `getent` (NSS, so Silverblue's
+    `/usr/lib/group`, userdb and LDAP all count). Free disk uses `Bfree`, since
+    root writes to `/var/lib`. AppArmor's mode comes from its profile list:
+    enforcing, complain, or `enabled` when unreadable (a new telemetry enum
+    value). A missing os-release `ID` defaults to `linux`.
 
 ## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
 
