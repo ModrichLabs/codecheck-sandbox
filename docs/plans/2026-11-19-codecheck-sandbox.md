@@ -13,7 +13,7 @@ _Updated 2026-11-20._
   logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
   downloads (#7) into `main`.
 - **In progress:** M6, host network, on branch `feat/host-network` in its own
-  worktree. The templates done; next comes `hostnet/rulehash.go`.
+  worktree. The templates and `hostnet/rulehash.go` done; next come the steps.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -555,11 +555,18 @@ of repeating them.
     JSON listing became the rule-hash fixture. **For spec §7:** the spec's
     "destroy table" wording now reads as this idiom.
 
-- [ ] `hostnet/rulehash.go`: canonical JSON from
+- [x] `hostnet/rulehash.go`: canonical JSON from
       `nft -j list table inet codecheck`, with handles stripped and keys sorted,
       then SHA-256.
   - **Tests:** a fixture JSON gives a stable hash; reordered handles give the
     same hash; an extra rule changes it.
+  - _Done:_ `HashRules(json)` and `LiveRuleHash(ctx, runner, table)` (runs
+    `nft -j list` as root). The `metainfo` object (nft's version) drops out too;
+    rule order stays, and a test shows swapping the accept and drop changes the
+    hash. The fixture comes from real nft 1.1.7. **For `RulesStep`:** nft's JSON
+    layout may differ between versions, so record the expected hash from the
+    live table just after loading, on the same host, never from a precomputed
+    value.
 - [ ] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
       `FakeRunner`:
   - `JailUserStep` (`fcjail`, recorded as created or adopted)
