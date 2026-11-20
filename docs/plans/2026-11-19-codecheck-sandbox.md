@@ -12,8 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
 - **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. `pins/pins.go` and `fetch/codecheck.go` done; next comes
-  `fetch/download.go`.
+  its own worktree. `pins/pins.go`, `fetch/codecheck.go` and `fetch/download.go`
+  done; next comes `fetch/gpg.go`.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -487,11 +487,17 @@ of repeating them.
     hex characters. The happy-path test fetches by commit from a real local bare
     repository; a `FakeRunner` covers the `FETCH_HEAD` mismatch.
 
-- [ ] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
+- [x] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
       checked and the file renamed. It reports `Progress` events, and removes
       the file on a hash mismatch.
   - **Tests:** an `httptest` TLS server covers a good hash, a bad hash, plain
     `http` refused and a partial download.
+  - _Done:_ `Downloader{Client, Progress}.Download(ctx, url, sha256, dest)`.
+    Redirects must stay on HTTPS too (GitHub releases redirect to another host);
+    a test covers a redirect to plain `http`. Progress goes to
+    `step.ReportProgress` unless injected, at most once per MiB. Any failure
+    (hash, HTTP status, a short body) removes the temporary file and leaves
+    `dest` untouched.
 - [ ] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
       embedded Ubuntu key in `assets/keys/ubuntu-cloudimage.asc`, then look up
       the squashfs line.
