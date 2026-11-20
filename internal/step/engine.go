@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
@@ -56,6 +57,27 @@ type Options struct {
 	// Elevate runs before the first root step that applies, and again when
 	// the login expires mid-step; nil skips the handover.
 	Elevate ElevateFunc
+	// OnStepFinished, when set, hears how each step ended (telemetry's
+	// step_finished). Dry-run steps never finish, so they never report.
+	OnStepFinished func(StepResult)
+}
+
+// Outcome says how a step ended.
+type Outcome string
+
+const (
+	OutcomeOK       Outcome = "ok"
+	OutcomeSkipped  Outcome = "skipped" // Check passed before any work
+	OutcomeFailed   Outcome = "failed"
+	OutcomeDeclined Outcome = "declined"
+)
+
+// StepResult reports one finished step.
+type StepResult struct {
+	ID       string
+	Outcome  Outcome
+	Duration time.Duration
+	Err      error // set for OutcomeFailed and OutcomeDeclined
 }
 
 var (
@@ -97,10 +119,21 @@ func (e *engine) emit(ctx context.Context, ev Event) {
 func (e *engine) runStep(ctx context.Context, s Step) error {
 	base := Event{StepID: s.ID(), Title: s.Title()}
 	at := func(k EventKind) Event { return with(base, k) }
+	start := time.Now()
+	report := func(o Outcome, err error) {
+		if e.opts.OnStepFinished != nil {
+			e.opts.OnStepFinished(StepResult{ID: s.ID(), Outcome: o, Duration: time.Since(start), Err: err})
+		}
+	}
 	fail := func(err error) error {
 		ev := at(StepFailed)
 		ev.Err = err
 		e.emit(ctx, ev)
+		if errors.Is(err, ErrDeclined) {
+			report(OutcomeDeclined, err)
+		} else {
+			report(OutcomeFailed, err)
+		}
 		return err
 	}
 
@@ -122,6 +155,7 @@ func (e *engine) runStep(ctx context.Context, s Step) error {
 		ev := at(StepDone)
 		ev.Status, ev.Skipped = st, true
 		e.emit(ctx, ev)
+		report(OutcomeSkipped, nil)
 		return nil
 	}
 
@@ -167,6 +201,7 @@ func (e *engine) runStep(ctx context.Context, s Step) error {
 	done := at(StepDone)
 	done.Status = st
 	e.emit(ctx, done)
+	report(OutcomeOK, nil)
 	return nil
 }
 

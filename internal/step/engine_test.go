@@ -324,6 +324,52 @@ func TestRunForwardsProgress(t *testing.T) {
 	}
 }
 
+func TestRunReportsEachFinishedStep(t *testing.T) {
+	h := &harness{}
+	boom := errors.New("boom")
+	failing := h.step("c", false, false)
+	failing.applyErr = []error{boom}
+	steps := []Step{h.step("a", false, true), h.step("b", false, false, true), failing}
+	var got []StepResult
+	err := h.run(t, steps, Options{OnStepFinished: func(r StepResult) { got = append(got, r) }})
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want boom", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("results = %+v, want 3", got)
+	}
+	want := []struct {
+		id      string
+		outcome Outcome
+	}{{"a", OutcomeSkipped}, {"b", OutcomeOK}, {"c", OutcomeFailed}}
+	for i, w := range want {
+		if got[i].ID != w.id || got[i].Outcome != w.outcome {
+			t.Errorf("result %d = %s/%s, want %s/%s", i, got[i].ID, got[i].Outcome, w.id, w.outcome)
+		}
+	}
+	if !errors.Is(got[2].Err, boom) || got[1].Err != nil {
+		t.Errorf("errors = %v / %v, want nil then boom", got[1].Err, got[2].Err)
+	}
+}
+
+func TestRunReportsADeclinedStep(t *testing.T) {
+	h := &harness{declined: true}
+	var got []StepResult
+	_ = h.run(t, []Step{h.step("a", false, false)}, Options{OnStepFinished: func(r StepResult) { got = append(got, r) }})
+	if len(got) != 1 || got[0].Outcome != OutcomeDeclined {
+		t.Errorf("results = %+v, want one declined", got)
+	}
+}
+
+func TestRunDryRunReportsNothingFinished(t *testing.T) {
+	h := &harness{}
+	var got []StepResult
+	_ = h.run(t, []Step{h.step("a", false, false)}, Options{DryRun: true, OnStepFinished: func(r StepResult) { got = append(got, r) }})
+	if len(got) != 0 {
+		t.Errorf("dry run reported %+v", got)
+	}
+}
+
 func TestReportProgressOutsideTheEngineDoesNothing(t *testing.T) {
 	ReportProgress(context.Background(), "nobody listens", 1) // must not panic
 }

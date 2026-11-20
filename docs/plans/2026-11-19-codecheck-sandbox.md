@@ -9,11 +9,14 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
-- **In progress:** M3, the step engine (`internal/step`), on branch
-  `feat/step-engine` in its own worktree. Every M3 task done, and the
-  `/code-review medium` findings fixed; next comes the M3 pull request, then M3a
-  (logging and telemetry) on a new branch once it merges.
+- **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
+  `main`.
+- **In progress:** M3a, logging and telemetry, on branch
+  `feat/logging-telemetry` in its own worktree. Every M3a task done and the
+  `/code-review medium` findings handled; next come the M3a pull request, then
+  M4 (platform and distro) on a new branch once it merges. Pins:
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
+  least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -286,29 +289,61 @@ of repeating them.
 
 ## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
 
-- [ ] `logging/logging.go`: a `slog` JSON handler that writes through
+- [x] `logging/logging.go`: a `slog` JSON handler that writes through
       `system.Redactor` to a rotating file (10 MB, five kept), plus an optional
       `charmbracelet/log` tee for `--debug`. **Tests:** a registered secret
       never appears in the file; rotation keeps five files; the level follows
       `--debug`.
-- [ ] `telemetry/events.go`: typed event structs for usage, errors, environment
+  - _Done:_ `New(Options{Dir, Redactor, Debug, Console, MaxSize})`. Five files
+    in all (`codecheck-sandbox.log` plus `.1` to `.4`), each 0600 in a 0700
+    folder; rotation uses the standard library. The `--debug` console copy
+    (`charm.land/log/v2`) goes through the Redactor too.
+- [x] `telemetry/events.go`: typed event structs for usage, errors, environment
       profile and security signals, with enum and band types (`DurationBand`,
       `CostBand`, `SizeBand`). **Tests:** band edges.
-- [ ] `telemetry/allowlist_test.go`, the safety test: fill every event with the
+  - _Done:_ every field holds a `bool` or a package type with an unexported
+    `value()` method that validates itself on encoding (unknown enum or band →
+    `"other"`, a bad version → `"invalid"`); `Properties` refuses any other
+    field type. Also `CountBand` (sub-agents, proxy denials). Step IDs count
+    only once registered: **later step milestones (M6–M11) must call
+    `telemetry.RegisterStepIDs` from `init`.**
+- [x] `telemetry/allowlist_test.go`, the safety test: fill every event with the
       worst values each type allows, add a planted key, path, repo URL, hostname
       and username to the surrounding context (step errors, config,
       environment), serialise, and assert that none of them appear. A reflection
       walk also fails the test if any event field has a plain `string` type
       outside the enum and version types.
-- [ ] `telemetry/exception.go`: build `$exception` properties from an error: the
+  - _Done:_ the test plants an IP address and an error message too. It caught
+    two leaks through `Version` on its first run, both fixed: an IPv4 address
+    passed as a four-part version, and a free-text suffix (`1.0-alice`) passed
+    as a pre-release. Versions now allow three numeric parts and only `dev`,
+    `rc`, `alpha` and `beta` suffixes.
+- [x] `telemetry/exception.go`: build `$exception` properties from an error: the
       kind from `errors.As` against known types or sentinels, never
       `err.Error()`; a stack limited to frames inside the module, with file
       paths cut to the module root. **Tests:** an error wrapping
       `/home/x/secret` yields neither the path nor the message.
-- [ ] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
+  - _Done:_ `NewException(err, stepID)`; `kindRules` lists the project's
+    sentinels, then context, filesystem and exec errors; the rest become
+    `unknown`. File paths come from the function's package plus the file's base
+    name, never the build path. Frame fields have their own validating types,
+    and the allowlist test covers them. Later milestones that add sentinels
+    should add them to `kindRules`. **Stacks** come only from an error in the
+    chain with a `Callers() []uintptr` method (recorded where it arose); without
+    one, the exception sends no stack, since the reporting site's frames would
+    mislead. A later milestone may add such an error type in a small package
+    that `cc-launch` can import too. Package paths may contain `-`
+    (`cmd/codecheck-sandbox`). `EnvironmentProfile.Kernel` uses `KernelVersion`,
+    which sends major.minor only.
+- [x] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
       `--no-telemetry`, `--yes`, TTY and `config.toml`; create or delete the
       install id. **Tests:** a table of every combination.
-- [ ] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
+  - _Done:_ `Resolve(ConsentInputs)` returns `On`, `Off` or `Ask` (no stored
+    choice, a TTY and no `--yes`; only the setup wizard asks, and other commands
+    treat it as `Off`). The config arrives as a `*bool`, so M13's `config.go`
+    supplies it. `EnsureInstallID` keeps a UUIDv4 in `telemetry/install-id`
+    (0600) and replaces a tampered file; `Forget` deletes the id and the queue.
+- [x] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
       `Noop` and `PostHog`. Queue to
       `~/.local/state/codecheck-sandbox/telemetry/queue.jsonl` (1 MB cap, oldest
       dropped); `Flush` sends through `posthog-go` (pinned version, feature
@@ -318,18 +353,38 @@ of repeating them.
       `httptest` server receives the batch with the expected properties; a
       hanging server never delays `Flush` past the deadline; a server error
       leaves the command's exit code alone.
-- [ ] Hook points: the engine emits `step_finished` through an injected client
+  - _Done:_ `New(Options)`; `Flush` takes the queue first (at-most-once: a
+    failed send drops events). posthog-go adds `$os`, `$os_version`,
+    `$os_distro` and `$go_version` after its `BeforeSend` hook, so a wrapping
+    HTTP transport (`stripTransport`) filters every batch against the property
+    allowlist as the last step before the network. It refuses anything other
+    than a POST to `/batch/`, and any body it cannot decode. No `SecretKey` (no
+    flag polling), no retries, GeoIP off. If the queue can't be deleted, `Flush`
+    sends nothing. **Accepted risk:** the queue has no lock, so two CLI commands
+    running at once for one user could lose an event; the proxy runs as a
+    separate `DynamicUser` and never shares this queue.
+- [x] Hook points: the engine emits `step_finished` through an injected client
       (M3 tests use `Noop`); `cli` wraps every command for `command_run` and a
       final `Flush`. `cc-launch` never imports `internal/telemetry`; an import
       test enforces that.
-- [ ] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
+  - _Done:_ `step` can't import `telemetry` (telemetry imports step for its
+    error kinds), so `step.Options.OnStepFinished` takes a `StepResult` and
+    `telemetry.StepRecorder(client)` adapts it.
+    `cli.NewRootCommandWith(factory)` wraps every subcommand. **For M13:**
+    `defaultTelemetry` returns `Noop` until `config.go` can supply the stored
+    consent; M13 must wire `telemetry.Resolve`, `EnsureInstallID`, the state
+    folder and `telemetry.New` there, and open the log with `logging.New`. The
+    import test checks every `cmd/cc-*` package for `internal/telemetry`,
+    `posthog-go` and `net/http`; checked against a throwaway `cmd/cc-probe`, it
+    caught all three.
+- [x] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
       to `internal/pins`. Project key (public, write-only; a dedicated
       organisation in US Cloud, confirmed 2026-11-19 by a 200 from
       `us.i.posthog.com/flags` and a 401 from EU):
       `phc_pR2TVwdPiaMaERt5bD6h77nvDkhq59G7bsvip8aPNyiP`. An empty key still
       makes `PostHog` fall back to `Noop` (keep that test). Builds may override
       it with `-ldflags -X` so forks can point at their own project.
-- [ ] Commit each file pair separately (`feat(telemetry): …`,
+- [x] Commit each file pair separately (`feat(telemetry): …`,
       `feat(logging): …`).
 
 ## M4. Platform and distro (`internal/platform`, `internal/distro`)
