@@ -9,12 +9,13 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
-  logging and telemetry (#4) into `main`.
-- **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
-  its own worktree. Every M4 task done and the `/code-review medium` findings
-  handled; next come the M4 pull request, then M5 (pins and downloads) on a new
-  branch once it merges.
+- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
+  logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
+- **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
+  its own worktree. `pins/pins.go` done; next comes `fetch/codecheck.go`.
+- **Open question for the maintainer:** the kernel pin points at Firecracker's
+  CI bucket, not a release of this repository; mirroring it means publishing a
+  GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -444,7 +445,7 @@ of repeating them.
 
 ## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
 
-- [ ] `pins/pins.go`, filled from the spike results:
+- [x] `pins/pins.go`, filled from the spike results:
   - Firecracker and jailer tarball URL and SHA-256.
   - Ubuntu squashfs URL, the `SHA256SUMS` URLs and the signing-key fingerprint.
   - Guest kernel URL (a release of this repository) and its SHA-256.
@@ -457,6 +458,17 @@ of repeating them.
   **Test:** no pin stays empty, every SHA-256 has 64 hex characters, the
   CodeCheck commit has 40 hex characters, and the integrity string starts with
   `sha512-`.
+
+  - _Done:_ every pin got checked against its source on 2026-11-20: Firecracker
+    against the release's `.sha256.txt`; the kernel by hashing the bytes the CI
+    bucket serves; Ubuntu by matching the dated `release-20261017` `SHA256SUMS`
+    to the spike's copy and verifying its signature with the key; the key by its
+    fingerprint; CodeCheck's tag with `git ls-remote`; Claude Code's integrity
+    against the npm registry. The Ubuntu pin uses the dated folder, since
+    `release/` moves to each new build. The kernel URL stays upstream for now
+    (see the open question above). Key file:
+    `assets/keys/ubuntu-cloudimage.asc`, from `keyserver.ubuntu.com`. A
+    reflection test checks every pin's format and that the pins agree.
 
 - [ ] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
       `~/.cache/codecheck-sandbox/codecheck.git` (a bare repository, HTTPS only,
