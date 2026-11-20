@@ -145,8 +145,9 @@ All Charm packages come from their v2 lines (`charm.land/bubbletea/v2`,
   the login expires anyway, the engine pauses and repeats the `sudo -v`
   handover. It also detects sudo-rs, `doas` and `run0`, and never pipes a
   password.
-- **Files go in as previewed.** Root files get written with `sudo -n tee` from
-  the same in-memory bytes the confirm panel showed.
+- **Files go in as previewed.** Root files get created with their final mode
+  (`install -m`), then filled by `dd status=none` through the privilege tool
+  from the same in-memory bytes the confirm panel showed (amendment 8).
 - **Plain mode.** Without a TTY, or with `--plain` or `--yes`, the same engine
   prints `charmbracelet/log` lines.
 - **Live status.** `review` shows elapsed time and the VM state from the serial
@@ -419,6 +420,11 @@ needs the user's consent.
    for `ModrichLabs/codecheck-sandbox` under Apache-2.0; CodeCheck becomes a
    pinned git dependency (§1). The project documentation set in §1's layout
    joins the plan's M1 and M14.
+8. **Root file writes** (M2 review, approved 2026-11-20): `install -m <mode>`
+   then `dd status=none` replace `sudo -n tee` then `chmod`, so a secret never
+   sits under umask permissions or echoes back as command output. Root commands
+   run as `<tool> -n -- <cmd>`, or
+   `run0 --no-ask-password --setenv=LC_ALL=C -- <cmd>`.
 
 ## Review outcome (independent Plan-agent review)
 
