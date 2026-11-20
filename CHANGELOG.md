@@ -26,5 +26,9 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
 - Upgrade the indirect dependency `github.com/klauspost/compress` to v1.20.3 for
   CVE-2026-63209. The vulnerable `s2` package never compiled into the binary,
   which uses only `zstd` through `posthog-go`.
+- Upgrade the indirect dependency `golang.org/x/crypto` to v0.58.0 for 15
+  advisories (among them CVE-2026-39830 to CVE-2026-39835, CVE-2026-42508 and
+  CVE-2026-46595 to CVE-2026-46598). All of them concern its SSH and SSH agent
+  packages, which the binary never imports.
 
 [Unreleased]: https://github.com/ModrichLabs/codecheck-sandbox/commits/main
