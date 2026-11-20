@@ -836,10 +836,18 @@ of repeating them.
     M9/M10:** stage the files under those names in the jail and pass the
     rendered file to `--config-file`; check it against the real Firecracker
     there.
-- [ ] `assets_test.go`: when `shellcheck` exists, run it on every script;
+- [x] `assets_test.go`: when `shellcheck` exists, run it on every script;
       otherwise skip with a message. Also check that `cc-claude` carries
       `--restricted`, `--strict-mcp-config` and the exact `--tools` list, and
       never `--bare`.
+  - _Done:_ every file in `assets/guest` with a shebang must start
+    `#!/bin/bash`, pass `bash -n`, and pass ShellCheck at style severity when it
+    exists. This machine lacks it, so the run went through
+    `mise exec shellcheck@0.11.0`, which caught two deliberate SC2016 cases in
+    `cc-selftest` (now marked with reasons). CONTRIBUTING says how to run it.
+    The flag contract lives in `TestCCClaudeTextContract` (cc-claude task).
+    **For M15:** the repository has no CI yet; a workflow should run ShellCheck
+    rather than skip it.
 
 ## M9. Launch helper (`cmd/cc-launch`, `internal/launch`)
 

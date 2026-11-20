@@ -54,12 +54,14 @@ summary() {
 
 # tcp_open HOST PORT: succeeds when a TCP connection opens within 5 seconds.
 tcp_open() {
+	# shellcheck disable=SC2016 # the inner bash expands its own $1 and $2
 	timeout 5 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$1" "$2"
 }
 
 # connect_ok HOST: succeeds when the proxy answers CONNECT HOST:443 with 200.
 connect_ok() {
 	local status
+	# shellcheck disable=SC2016 # the inner bash expands its own arguments
 	status=$(timeout 10 bash -c '
 		exec 3<>"/dev/tcp/$1/$2"
 		printf "CONNECT %s:443 HTTP/1.1\r\nHost: %s:443\r\n\r\n" "$3" "$3" >&3

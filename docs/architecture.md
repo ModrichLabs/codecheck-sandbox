@@ -117,6 +117,29 @@ binary (npm integrity hash plus a binary hash), and CodeCheck at a pinned git
 commit. A builder VM with **no network device** assembles the root disk as root
 inside the VM, so file ownership comes out right without root on the host.
 
+One static binary, `cc-guestinit`, runs as PID 1 in every VM and reads its job
+from a fixed 4 KB settings block on the raw config device, which only root can
+read:
+
+- **Build:** the builder boots a one-file initramfs holding `cc-guestinit`. It
+  copies the Ubuntu tree onto a blank disk, keeping owners, modes and links. It
+  adds the Claude Code binary, the CodeCheck plugin, the guest scripts and the
+  sandbox CA, root-owned with fixed modes, and creates the `agent` account (uid
+  10001).
+- **Review:** the VM boots the built image read-only and puts a tmpfs over every
+  writable path. It mounts the code disk read-only (no journal replay) and gives
+  `eth0` the guest address with IPv6 off and no default route. Then it runs
+  `cc-claude` as `agent` through `setpriv` with no capabilities and
+  `no_new_privs`. Claude gets `Read`, `Grep`, `Glob`, `Agent` and `Skill` only,
+  never a shell. For a diff review, the host writes `git diff` and `git status`
+  output to the code disk beforehand.
+- **Selftest:** the same VM runs `cc-selftest` instead. It tries every way out
+  (other hosts and ports, DNS, IPv6, a spoofed address, root) and needs every
+  attempt to fail, except the proxy's tunnel to the Anthropic API.
+
+Each VM ends with a reboot, even after a failure, since Firecracker exits on a
+guest reboot but hangs on a power-off.
+
 ## Logging and telemetry
 
 Local logs, with secrets redacted, always stay on the machine. Remote telemetry
