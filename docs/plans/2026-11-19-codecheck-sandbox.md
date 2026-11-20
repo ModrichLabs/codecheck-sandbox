@@ -11,8 +11,8 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
 - **In progress:** M3, the step engine (`internal/step`), on branch
-  `feat/step-engine` in its own worktree. `step.go`, `engine.go` and
-  `manifest.go` done; next comes `undo.go`, then `lock.go`.
+  `feat/step-engine` in its own worktree. `step.go`, `engine.go`, `manifest.go`
+  and `undo.go` done; next comes `lock.go`.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -248,10 +248,12 @@ of repeating them.
     that applies, and again (with one retry) when `Apply` returns
     `system.ErrLoginExpired`. The first failure or a refusal stops the run.
     Steps report progress with `ReportProgress(ctx, msg, fraction)`.
-- [ ] `undo.go`:
+- [x] `undo.go`:
   - `Uninstall(ctx, steps, manifest)` runs `Undo` in reverse, only for steps the
     manifest lists as `created`.
   - **Tests:** order, and the skipping of `adopted` and missing entries.
+  - _Done:_ a step with any created item gets undone; a failed `Undo` doesn't
+    stop the rest, and `Uninstall` returns every failure joined.
 - [x] `manifest.go`:
   - Schema
     `{version:1, installedBy, items:[{id, kind, path, state:created|adopted}]}`.
