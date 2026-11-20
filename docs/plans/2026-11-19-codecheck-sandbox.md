@@ -10,11 +10,12 @@ _Updated 2026-11-20._
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
-  logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
-- **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. Every M5 task done and the `/code-review medium` findings
-  fixed; next come the M5 pull request, then M6 (host network) on a new branch
-  once it merges.
+  logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
+  downloads (#7) into `main`.
+- **In progress:** M6, host network, on branch `feat/host-network` in its own
+  worktree. Every M6 task done and the `/code-review medium` findings fixed;
+  next come the M6 pull request, then M7 (egress proxy) on a new branch once it
+  merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -533,7 +534,7 @@ of repeating them.
 
 ## M6. Host network (`internal/hostnet`)
 
-- [ ] Templates in `assets/host/`:
+- [x] Templates in `assets/host/`:
   - `codecheck-net.service`: creates the tap, sets its address, turns IPv6 off
     and brings it up, then loads the rules.
   - `rules.nft`: uses `destroy table`, then `table`, with the review allow rule
@@ -543,12 +544,32 @@ of repeating them.
   `hostnet.Render(Config)` fills them in. **Golden tests** in
   `testdata/golden/`.
 
-- [ ] `hostnet/rulehash.go`: canonical JSON from
+  - _Done:_ `rules.nft` replaces the table with `table` / `delete table` /
+    `table { … }` in one file instead of `destroy table`, which needs nftables
+    1.0.8+ (Debian 12 ships 1.0.6); one `nft -f` keeps it atomic. The unit loads
+    the rules **before** it creates the tap, so the tap never exists unfiltered
+    (the rules match `iifname` strings), clears a stale tap first, and removes
+    both on stop. Input hook: `cc-tap0` may reach only `172.16.0.1:3180/tcp`;
+    everything else from `cc-tap*` drops. Forward hook: all `cc-tap*` traffic
+    drops. `Config.Validate` refuses values that could inject template text or
+    widen the rules. The rendered rules loaded cleanly, twice, with real nft
+    1.1.7 in an unprivileged namespace (`unshare -rn`), leaving one table; its
+    JSON listing became the rule-hash fixture. **For spec §7:** the spec's
+    "destroy table" wording now reads as this idiom.
+
+- [x] `hostnet/rulehash.go`: canonical JSON from
       `nft -j list table inet codecheck`, with handles stripped and keys sorted,
       then SHA-256.
   - **Tests:** a fixture JSON gives a stable hash; reordered handles give the
     same hash; an extra rule changes it.
-- [ ] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
+  - _Done:_ `HashRules(json)` and `LiveRuleHash(ctx, runner, table)` (runs
+    `nft -j list` as root). The `metainfo` object (nft's version) drops out too;
+    rule order stays, and a test shows swapping the accept and drop changes the
+    hash. The fixture comes from real nft 1.1.7. **For `RulesStep`:** nft's JSON
+    layout may differ between versions, so record the expected hash from the
+    live table just after loading, on the same host, never from a precomputed
+    value.
+- [x] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
       `FakeRunner`:
   - `JailUserStep` (`fcjail`, recorded as created or adopted)
   - `JailerBaseStep` (`/srv/jailer`, mode 711)
@@ -559,6 +580,47 @@ of repeating them.
   - `FirewalldStep` and `UfwStep`, only when they're active: they allow 3180 on
     the tap
   - `SELinuxStep`, only when SELinux enforces
+  - _Done:_ `hostnet.Steps(Deps{Config, Runner, FS, Record})` validates the
+    config and returns eight steps (`host-*` IDs, registered with telemetry) in
+    this order: jail user, jailer base, rules, NetworkManager, tap service,
+    firewalld, ufw, SELinux. Rules load before the tap service (which loads them
+    again) and NetworkManager learns to ignore the tap before it exists. `Apply`
+    records only what it creates, through `Record`, so pre-existing users and
+    folders never get removed; M13 collects the records into the manifest.
+    Decisions:
+    - `fcjail`:
+      `useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /bin/false`;
+      no `kvm` group, since the jailer creates `/dev/kvm` inside each chroot for
+      the jail user.
+    - Rules: create `/etc/codecheck-sandbox` and `/var/lib/codecheck-sandbox`
+      (0755), write and load the rules, then record the live table's hash. Undo
+      deletes the table, the files, then empty folders.
+    - firewalld: a dedicated `codecheck` zone holding the tap
+      (`--change-interface`, which also moves it out of a zone NetworkManager
+      chose) with port 3180/tcp; undo deletes the zone.
+    - ufw: `ufw allow in on cc-tap0 to 172.16.0.1 port 3180 proto tcp`, checked
+      with `ufw show added`.
+    - SELinux: `restorecon -RF` on our paths, checked with a dry run. **Not yet
+      tried on an SELinux host; check on Fedora in M14.**
+    - Jailer base undo uses `rm -rf --one-file-system`, so it never follows a
+      bind mount a crashed run left.
+  - _Also:_ `PrivRunner` now turns each privilege tool's "password required"
+    reply into `ErrLoginExpired`, so a `Check` that needs root (the live rule
+    hash) hands over on the first run instead of failing; sudo's and run0's
+    wording checked on this host, sudo-rs's and doas's from their sources. The
+    manifest allowlist gains `firewalld zone codecheck` and
+    `ufw allow cc-tap0 3180`.
+  - _Review:_ `/code-review medium` found 10 issues, all fixed test-first. The
+    login match now needs the tool's own prefix (`sudo:`, `doas:`, run0's line),
+    so a root command's own "authorization required" stays its error. The rules
+    undo treats a table the tap service already removed as gone; the unit's IPv6
+    `sysctl` carries `-` for `ipv6.disable=1` hosts; `Steps` de-duplicates
+    records, since the engine retries `Apply` after a handover; the tap check
+    also needs `ip link show dev cc-tap0`; firewalld checks its zone query,
+    plans `--new-zone` only when needed (asking without root, since the engine
+    elevates after planning) and skips `--reload` when stopped; the SELinux and
+    ufw checks report failed commands; `Validate` refuses the subnet's network
+    and broadcast addresses. `systemd-analyze verify` accepts the rendered unit.
 
 ## M7. Egress proxy (`internal/proxy`)
 

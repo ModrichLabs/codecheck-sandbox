@@ -185,6 +185,8 @@ func TestManifestChecksNames(t *testing.T) {
 		{ID: "x", Kind: KindUnit, Name: "codecheck-proxy.service", State: Created},
 		{ID: "x", Kind: KindNetwork, Name: "cc-tap0", State: Created},
 		{ID: "x", Kind: KindNetwork, Name: "inet codecheck", State: Created},
+		{ID: "x", Kind: KindNetwork, Name: "firewalld zone codecheck", State: Created},
+		{ID: "x", Kind: KindNetwork, Name: "ufw allow cc-tap0 3180", State: Created},
 	}
 	for _, it := range good {
 		m := &Manifest{Version: ManifestVersion, Items: []Item{it}}

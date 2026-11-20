@@ -1,0 +1,23 @@
+# Written by codecheck-sandbox setup; uninstall removes it.
+[Unit]
+Description=codecheck-sandbox network: firewall rules and the cc-tap0 tap device
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# A tap left over from a crash would make tuntap add fail.
+ExecStartPre=-ip link del dev cc-tap0
+# The rules load first, so the tap never exists without them.
+ExecStart=nft -f /etc/codecheck-sandbox/rules.nft
+ExecStart=ip tuntap add dev cc-tap0 mode tap user fcjail
+# "-": a host booted with ipv6.disable=1 has no IPv6 to switch off.
+ExecStart=-sysctl -q -w net.ipv6.conf.cc-tap0.disable_ipv6=1
+ExecStart=ip addr add 172.16.0.1/30 dev cc-tap0
+ExecStart=ip link set dev cc-tap0 up
+ExecStop=-ip link del dev cc-tap0
+ExecStop=-nft delete table inet codecheck
+
+[Install]
+WantedBy=multi-user.target

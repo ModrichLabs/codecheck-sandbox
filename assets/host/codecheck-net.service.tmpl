@@ -1,0 +1,23 @@
+# Written by codecheck-sandbox setup; uninstall removes it.
+[Unit]
+Description=codecheck-sandbox network: firewall rules and the {{.Tap}} tap device
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# A tap left over from a crash would make tuntap add fail.
+ExecStartPre=-ip link del dev {{.Tap}}
+# The rules load first, so the tap never exists without them.
+ExecStart=nft -f {{.RulesPath}}
+ExecStart=ip tuntap add dev {{.Tap}} mode tap user {{.JailUser}}
+# "-": a host booted with ipv6.disable=1 has no IPv6 to switch off.
+ExecStart=-sysctl -q -w net.ipv6.conf.{{.Tap}}.disable_ipv6=1
+ExecStart=ip addr add {{.HostIP}}/{{.PrefixLen}} dev {{.Tap}}
+ExecStart=ip link set dev {{.Tap}} up
+ExecStop=-ip link del dev {{.Tap}}
+ExecStop=-nft delete table inet {{.Table}}
+
+[Install]
+WantedBy=multi-user.target

@@ -89,7 +89,39 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
 	}
 	args = append(append(args, "--", c.Name), c.Args...)
-	return p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
+	res, err := p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
+	if err == nil && res.Code != 0 && needsLogin(res.Stderr) {
+		return res, fmt.Errorf("%s: %w: %s", c.Name, ErrLoginExpired, strings.TrimSpace(string(res.Stderr)))
+	}
+	return res, err
+}
+
+// loginReplies pair the prefix a privilege tool puts on its own messages with
+// what it says when -n meets a missing login: sudo and run0 checked on a real
+// host, sudo-rs and doas from their sources. Matching the prefix too keeps a
+// root command's own "authorization required" from passing for one.
+var loginReplies = []struct{ prefix, says string }{
+	{"sudo:", "a password is required"},
+	{"sudo-rs:", "authentication is required"},
+	{"sudo:", "authentication is required"}, // sudo-rs installed as sudo
+	{"doas:", "authentication required"},
+	{"doas:", "authorization required"},
+	{"failed to start transient service unit:", "requires interactive authentication"}, // run0
+}
+
+// needsLogin reports whether a line of stderr comes from the privilege tool
+// and says it wanted a password, which the engine treats like an expired
+// login and answers with a handover.
+func needsLogin(stderr []byte) bool {
+	for line := range strings.Lines(strings.ToLower(string(stderr))) {
+		line = strings.TrimSpace(line)
+		for _, r := range loginReplies {
+			if strings.HasPrefix(line, r.prefix) && strings.Contains(line, r.says) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // WriteRootFile writes data to a root-owned file at path with the given mode.
