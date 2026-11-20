@@ -9,12 +9,13 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Open:** the bootstrap pull request from `bootstrap/initial-structure` into
-  `main`, awaiting the maintainer's review and merge.
-- **Next:** M2, the system layer (`internal/system`), starting with `runner.go`
-  test-first. Branch from `main` after the bootstrap PR merges, in a new
-  worktree (for example `feat/system-layer`), and open one PR per milestone or
-  two.
+- **Merged:** the bootstrap pull request (#1) into `main`.
+- **In progress:** M2, the system layer (`internal/system`), on branch
+  `feat/system-layer` in its own worktree. `runner.go`, `fake.go`,
+  `privilege.go`, `fs.go`, `keepalive.go` and `redact.go` done (`fake.go` moved
+  ahead, since the privilege tests need it). `/code-review medium` found 10
+  issues; all got fixed or documented. Next: the M2 pull request, then M3 (the
+  step engine) on a new branch once it merges.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -182,31 +183,53 @@ of repeating them.
 
 ## M2. System layer (`internal/system`)
 
-- [ ] `runner.go`:
+- [x] `runner.go`:
   - `type Cmd struct{ Name string; Args []string; Stdin []byte; Env []string; Root bool }`,
     `type Result struct{ Stdout, Stderr []byte; Code int }`, and
     `type Runner interface{ Run(ctx, Cmd) (Result, error) }`.
   - `ExecRunner` sets `LC_ALL=C` and never runs a shell.
   - **Tests:** argument passing, `LC_ALL`, exit codes, and stdin set to
     `/dev/null` when empty.
-- [ ] `privilege.go`:
+  - _Done:_ a non-zero exit fills `Result.Code` without an error; `Run` errors
+    only when the command fails to start or the context ends. `ExecRunner`
+    refuses `Root:true` with `ErrRootNeeded`, leaving that to `privilege.go`.
+- [x] `privilege.go`:
   - Detect `sudo`, sudo-rs, `doas` and `run0` from `PATH`, plus `sudo --version`
     output.
   - `Cmd{Root:true}` runs through `<tool> -n`.
   - `WriteRootFile(path, bytes, mode)` writes through `sudo -n tee` and then
     `chmod`, from in-memory bytes.
   - **Tests** use a fake runner and assert the exact argv for each tool.
-- [ ] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
+  - _Done:_ `WriteRootFile` runs `install -m <mode> -T /dev/null <path>` and
+    then `dd of=<path> status=none`, so a secret never sits under looser
+    permissions or echoes back as stdout (a change from `tee` then `chmod`;
+    later tasks that say `sudo tee` mean `WriteRootFile`). Root commands run as
+    `<tool> -n -- <cmd>`; run0 gets `--no-ask-password --setenv=LC_ALL=C`
+    instead of `-n`. `PrivRunner` refuses `Env` on root commands, which the
+    tools would drop; doas drops `LC_ALL=C` too, so parsed root output should
+    stick to JSON.
+- [x] `fake.go`: `FakeRunner` records calls and replays scripted results, keyed
       by an argv prefix. It panics on any unexpected call, so tests fail loudly.
-- [ ] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
+  - _Done:_ `On(prefix...).Return(res)` or `.Fail(err)`; each script answers
+    once, in the order added; `Calls()` and `Pending()` support assertions.
+- [x] `fs.go`: an `FS` interface (read, write, stat, mkdir, remove) with an
       `OSFS` and a `MemFS` for tests.
-- [ ] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
+  - _Done:_ one contract test runs against both; errors match the `os`
+    package's, so `errors.Is(err, fs.ErrNotExist)` works on either.
+- [x] `keepalive.go`: a goroutine that runs `sudo -n -v` every 60 seconds until
       the context ends, and reports the first failure on a channel. Tested with
       a fake clock.
-- [ ] `redact.go`: `Redactor` replaces registered secrets in any byte stream.
+  - _Done:_ `KeepAlive` takes the tick channel (the fake clock);
+    `StartKeepAlive` wires a real 60-second ticker. doas runs `-n true`, which
+    detects expiry but cannot extend it; run0 runs nothing. A non-zero exit
+    reports `ErrLoginExpired` with the tool's stderr.
+- [x] `redact.go`: `Redactor` replaces registered secrets in any byte stream.
   - **Test:** a key registered once never appears in the output of the log
     writer or the runner's error messages.
-- [ ] Commit each file pair separately (`feat(system): …`).
+  - _Done:_ `Redactor.Writer` catches a secret split across writes, holding back
+    only a tail that could start one; `Redactor.Runner` redacts stderr and error
+    messages (keeping the error chain) but leaves stdout alone.
+- [x] Commit each file pair separately (`feat(system): …`).
 
 ## M3. Step engine (`internal/step`)
 

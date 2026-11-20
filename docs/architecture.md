@@ -93,6 +93,15 @@ Root steps show their commands and file contents before running, unless you pass
 that, root commands run with `sudo -n`, so nothing can prompt behind the
 interface.
 
+The system layer (`internal/system`) holds these pieces. The `Runner` never
+starts a shell and runs every command with `LC_ALL=C`. The privilege runner
+detects sudo, sudo-rs, doas or run0 and runs each root command with the tool's
+no-prompt flag. A keep-alive refreshes the login every 60 seconds and reports
+when it expires. Root files get created with their final mode before `dd` fills
+them, so a secret never sits under looser permissions or comes back as command
+output. A `Redactor` strips registered secrets, such as the API key, from logs,
+stderr and error messages.
+
 ## The guest image
 
 The host downloads and verifies every input: the Ubuntu 24.04 cloud image
