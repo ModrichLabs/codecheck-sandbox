@@ -22,8 +22,22 @@ type Cmd struct {
 	// Env adds to (or overrides) the inherited environment. LC_ALL always ends
 	// up as C, whatever Env says.
 	Env []string
+	// CleanEnv starts from a minimal environment instead of inheriting the
+	// caller's: only the variables in cleanEnvKeep survive, plus Env. Use it
+	// where an inherited variable could weaken a check (GIT_SSL_NO_VERIFY,
+	// GIT_CONFIG_COUNT and the like).
+	CleanEnv bool
 	// Root asks for the command to run as root, through the privilege tool.
 	Root bool
+}
+
+// cleanEnvKeep lists what a CleanEnv command still inherits: the search path,
+// the home folder, and the proxy and CA settings a corporate network needs
+// (TLS still guards what passes through them).
+var cleanEnvKeep = []string{
+	"PATH", "HOME",
+	"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy",
+	"SSL_CERT_FILE", "SSL_CERT_DIR",
 }
 
 // Result holds what a finished command produced. Code carries the exit status;
@@ -54,7 +68,11 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 		return Result{}, fmt.Errorf("%s: %w", c.Name, ErrRootNeeded)
 	}
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
-	cmd.Env = buildEnv(os.Environ(), c.Env)
+	base := os.Environ()
+	if c.CleanEnv {
+		base = keepOnly(base, cleanEnvKeep)
+	}
+	cmd.Env = buildEnv(base, c.Env)
 	cmd.WaitDelay = waitDelay
 	if len(c.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
@@ -78,6 +96,21 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 		return res, fmt.Errorf("%s: %w", c.Name, err)
 	}
 	return res, nil
+}
+
+// keepOnly returns the entries of env whose names appear in names.
+func keepOnly(env, names []string) []string {
+	var out []string
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		for _, n := range names {
+			if name == n {
+				out = append(out, kv)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // buildEnv merges extra into base, drops every LC_ALL entry and appends

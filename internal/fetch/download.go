@@ -37,7 +37,13 @@ type Downloader struct {
 	// Progress hears bytes done and the total (-1 when unknown); nil sends
 	// progress to the step engine through step.ReportProgress.
 	Progress func(done, total int64)
+	// MaxBytes caps one download, so a broken or hostile server cannot fill
+	// the disk before the hash check; zero means DefaultMaxDownload.
+	MaxBytes int64
 }
+
+// DefaultMaxDownload comfortably covers the largest pinned file.
+const DefaultMaxDownload = 4 << 30
 
 // Download fetches rawURL into dest, but only if its SHA-256 matches want.
 // It writes to a temporary file beside dest, checks the hash, then renames;
@@ -91,6 +97,9 @@ func (d Downloader) fetchTo(ctx context.Context, rawURL, dest string, h hash.Has
 	if err != nil {
 		return err
 	}
+	// The pins cover files as published. Asking for identity stops Go's
+	// transport from decoding a Content-Encoding: gzip reply behind our back.
+	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", filepath.Base(dest), err)
@@ -112,9 +121,17 @@ func (d Downloader) fetchTo(ctx context.Context, rawURL, dest string, h hash.Has
 		}
 	}()
 
+	limit := d.MaxBytes
+	if limit <= 0 {
+		limit = DefaultMaxDownload
+	}
 	pw := &progressWriter{report: d.report(ctx, filepath.Base(dest)), total: resp.ContentLength}
-	if _, err := io.Copy(io.MultiWriter(tmp, h, pw), resp.Body); err != nil {
+	n, err := io.Copy(io.MultiWriter(tmp, h, pw), io.LimitReader(resp.Body, limit+1))
+	if err != nil {
 		return fmt.Errorf("downloading %s: %w", filepath.Base(dest), err)
+	}
+	if n > limit {
+		return fmt.Errorf("%s: %w (%d bytes)", filepath.Base(dest), ErrTooLarge, limit)
 	}
 	pw.flush()
 	if err := check(h.Sum(nil)); err != nil {

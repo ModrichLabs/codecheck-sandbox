@@ -12,8 +12,9 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
 - **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. Every M5 task done; next come the M5 review and pull
-  request, then M6 (host network) on a new branch once it merges.
+  its own worktree. Every M5 task done and the `/code-review medium` findings
+  fixed; next come the M5 pull request, then M6 (host network) on a new branch
+  once it merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -483,9 +484,13 @@ of repeating them.
     plan's flags, every git call also runs with `protocol.allow=never` plus
     `protocol.https.allow=always`, and with `GIT_CONFIG_GLOBAL=/dev/null`,
     `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`, so a `url.insteadOf` in
-    the user's config can't redirect the fetch. The commit must be exactly 40
-    hex characters. The happy-path test fetches by commit from a real local bare
-    repository; a `FakeRunner` covers the `FETCH_HEAD` mismatch.
+    the user's config can't redirect the fetch. Git also runs with the new
+    `system.Cmd.CleanEnv`, which passes on only `PATH`, `HOME`, proxy and CA
+    variables: `GIT_CONFIG_*` and `GIT_SSL_NO_VERIFY` (which acts even when
+    empty) never reach it. A test with real git proved an inherited
+    `GIT_CONFIG_COUNT` did redirect the fetch before that fix. The commit must
+    be exactly 40 hex characters. The happy-path test fetches by commit from a
+    real local bare repository; a `FakeRunner` covers the `FETCH_HEAD` mismatch.
 
 - [x] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
       checked and the file renamed. It reports `Progress` events, and removes
@@ -497,7 +502,9 @@ of repeating them.
     a test covers a redirect to plain `http`. Progress goes to
     `step.ReportProgress` unless injected, at most once per MiB. Any failure
     (hash, HTTP status, a short body) removes the temporary file and leaves
-    `dest` untouched.
+    `dest` untouched. Requests ask for `Accept-Encoding: identity`, so a
+    server's `Content-Encoding: gzip` can't change the bytes that get hashed;
+    `MaxBytes` (default 4 GiB) caps each download.
 - [x] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
       embedded Ubuntu key in `assets/keys/ubuntu-cloudimage.asc`, then look up
       the squashfs line.

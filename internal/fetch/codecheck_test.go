@@ -92,6 +92,31 @@ func TestCodeCheckFetchesThePinnedCommit(t *testing.T) {
 	}
 }
 
+func TestCodeCheckIgnoresGitVariablesFromTheShell(t *testing.T) {
+	url, commit := upstream(t)
+	// Were these to reach git, the fetch would go to a repository that
+	// doesn't exist, and fail.
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "url.file:///nonexistent/evil.git.insteadOf")
+	t.Setenv("GIT_CONFIG_VALUE_0", url)
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'url.file:///nonexistent/evil.git.insteadof'='"+url+"'")
+	cc := CodeCheck{Runner: system.ExecRunner{}, CacheDir: filepath.Join(t.TempDir(), "c.git"), RepoURL: url, Commit: commit, allowFileURLs: true}
+	if _, err := cc.Archive(context.Background()); err != nil {
+		t.Fatalf("Archive with hostile GIT_* variables in the shell: %v", err)
+	}
+}
+
+func TestCodeCheckErrorsNameTheGitCommand(t *testing.T) {
+	f := &system.FakeRunner{}
+	f.On("git").Return(system.Result{})
+	f.On("git").Return(system.Result{Code: 128, Stderr: []byte("fatal: couldn't find remote ref")})
+	cc := CodeCheck{Runner: f, CacheDir: "/cache/c.git", RepoURL: "https://github.com/x/y", Commit: strings.Repeat("d", 40)}
+	_, err := cc.Archive(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "fetch --depth 1") {
+		t.Errorf("err = %v, want one naming the fetch", err)
+	}
+}
+
 func TestCodeCheckRefusesAMismatchedCommit(t *testing.T) {
 	commit := strings.Repeat("a", 40)
 	f := &system.FakeRunner{}
@@ -146,6 +171,9 @@ func TestCodeCheckHardensEveryGitCall(t *testing.T) {
 		}
 		if c.Root {
 			t.Errorf("git %s runs as root", argv)
+		}
+		if !c.CleanEnv {
+			t.Errorf("git %s inherits the caller's environment", argv)
 		}
 	}
 	fetch := strings.Join(f.Calls()[1].Args, " ")

@@ -1,6 +1,8 @@
 package fetch
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -121,6 +123,39 @@ func TestDownloadHTTPError(t *testing.T) {
 	err := Downloader{Client: srv.Client()}.Download(context.Background(), srv.URL, sum(payload), filepath.Join(t.TempDir(), "x"))
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("err = %v, want one naming the 404", err)
+	}
+}
+
+func TestDownloadHashesTheBytesAsPublished(t *testing.T) {
+	// A misconfigured CDN serves a .tgz with Content-Encoding: gzip. The pin
+	// covers the file as published, so no transparent decoding may happen.
+	var gz bytes.Buffer
+	w := gzip.NewWriter(&gz)
+	_, _ = w.Write(payload)
+	w.Close()
+	published := gz.Bytes()
+	srv := tlsServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(published)
+	})
+	dest := filepath.Join(t.TempDir(), "x.tgz")
+	if err := (Downloader{Client: srv.Client()}).Download(context.Background(), srv.URL, sum(published), dest); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if got, _ := os.ReadFile(dest); !bytes.Equal(got, published) {
+		t.Errorf("dest holds %d bytes, want the %d published bytes", len(got), len(published))
+	}
+}
+
+func TestDownloadSizeCap(t *testing.T) {
+	srv := tlsServer(t, serve)
+	dir := t.TempDir()
+	err := Downloader{Client: srv.Client(), MaxBytes: 1024}.Download(context.Background(), srv.URL, sum(payload), filepath.Join(dir, "x"))
+	if !errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+	if names := leftovers(t, dir); len(names) != 0 {
+		t.Errorf("left %v behind", names)
 	}
 }
 

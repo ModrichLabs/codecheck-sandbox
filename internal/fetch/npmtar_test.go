@@ -139,6 +139,13 @@ func TestNpmBinaryRefusesUnsafeEntries(t *testing.T) {
 	}
 }
 
+func TestNpmBinaryNeedsASizeCap(t *testing.T) {
+	body := goodTarball(t)
+	if _, err := fetchClaude(t, body, sri(body), sum(claudeBinary), 0); err == nil || errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want a configuration error for a missing cap", err)
+	}
+}
+
 func TestNpmBinarySizeCap(t *testing.T) {
 	body := goodTarball(t)
 	if _, err := fetchClaude(t, body, sri(body), sum(claudeBinary), 8); !errors.Is(err, ErrTooLarge) {

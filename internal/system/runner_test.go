@@ -47,6 +47,24 @@ func TestExecRunnerForcesCLocale(t *testing.T) {
 	}
 }
 
+func TestExecRunnerCleanEnvDropsInheritedVariables(t *testing.T) {
+	t.Setenv("GIT_SSL_NO_VERIFY", "1")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("HTTPS_PROXY", "http://proxy.example:3128")
+	res := runOK(t, Cmd{Name: "env", Env: []string{"CC_TEST=yes"}, CleanEnv: true})
+	env := string(res.Stdout)
+	for _, gone := range []string{"GIT_SSL_NO_VERIFY", "GIT_CONFIG_COUNT"} {
+		if strings.Contains(env, gone+"=") {
+			t.Errorf("CleanEnv kept %s:\n%s", gone, env)
+		}
+	}
+	for _, kept := range []string{"PATH=", "HTTPS_PROXY=http://proxy.example:3128", "CC_TEST=yes", "LC_ALL=C"} {
+		if !strings.Contains(env, kept) {
+			t.Errorf("CleanEnv lost %s:\n%s", kept, env)
+		}
+	}
+}
+
 func TestExecRunnerReportsExitCode(t *testing.T) {
 	res := runOK(t, Cmd{Name: "sh", Args: []string{"-c", "echo oops >&2; exit 7"}})
 	if res.Code != 7 {

@@ -61,6 +61,9 @@ func LookupSum(sums []byte, name string) (string, error) {
 			found = append(found, hash)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("reading SHA256SUMS: %w", err)
+	}
 	switch {
 	case len(found) == 0:
 		return "", fmt.Errorf("SHA256SUMS lists no %s", name)

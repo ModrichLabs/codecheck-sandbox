@@ -52,6 +52,9 @@ func ClaudeCodeBinary(d Downloader, workDir string) NpmBinary {
 
 // Fetch writes the member to dest with mode 0755, or leaves dest untouched.
 func (n NpmBinary) Fetch(ctx context.Context, dest string) error {
+	if n.MaxBytes <= 0 {
+		return errors.New("NpmBinary needs a MaxBytes size cap for its member")
+	}
 	tgz := filepath.Join(n.WorkDir, path.Base(n.URL))
 	if err := n.DownloadSRI(ctx, n.URL, n.Integrity, tgz); err != nil {
 		return err
@@ -116,6 +119,9 @@ func (n NpmBinary) extract(tgz, dest string) error {
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != n.BinarySHA256 {
 		return fmt.Errorf("%s: %w: got %s, want %s", n.Member, ErrHashMismatch, got, n.BinarySHA256)
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err

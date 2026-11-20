@@ -87,9 +87,10 @@ func (c CodeCheck) checkURL() error {
 	return fmt.Errorf("%q: %w", c.RepoURL, ErrNotHTTPS)
 }
 
-// git runs git with hooks off, every transport but HTTPS refused, and no
-// system or global config, so a url.insteadOf in ~/.gitconfig cannot
-// redirect the fetch.
+// git runs git with hooks off, every transport but HTTPS refused, no system
+// or global config, and a clean environment: neither a url.insteadOf in
+// ~/.gitconfig nor GIT_CONFIG_* or GIT_SSL_NO_VERIFY in the shell can redirect
+// the fetch or weaken TLS. The cache's own config comes from git init here.
 func (c CodeCheck) git(ctx context.Context, args ...string) ([]byte, error) {
 	fileAllow := "never"
 	if c.allowFileURLs {
@@ -102,15 +103,16 @@ func (c CodeCheck) git(ctx context.Context, args ...string) ([]byte, error) {
 		"-c", "protocol.file.allow=" + fileAllow,
 	}
 	res, err := c.Runner.Run(ctx, system.Cmd{
-		Name: "git",
-		Args: append(hardened, args...),
-		Env:  []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"},
+		Name:     "git",
+		Args:     append(hardened, args...),
+		Env:      []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"},
+		CleanEnv: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if res.Code != 0 {
-		return nil, fmt.Errorf("git %s: exit %d: %s", args[len(args)-1], res.Code, strings.TrimSpace(string(res.Stderr)))
+		return nil, fmt.Errorf("git %s: exit %d: %s", strings.Join(args, " "), res.Code, strings.TrimSpace(string(res.Stderr)))
 	}
 	return res.Stdout, nil
 }

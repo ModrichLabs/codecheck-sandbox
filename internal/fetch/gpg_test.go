@@ -98,6 +98,10 @@ func TestLookupSum(t *testing.T) {
 	if _, err := LookupSum([]byte("zz *disk.squashfs\n"), "disk.squashfs"); err == nil {
 		t.Error("a malformed hash got accepted")
 	}
+	long := strings.Repeat("x", 70000) + "\n" + fixtureSums
+	if _, err := LookupSum([]byte(long), "disk.squashfs"); err == nil || strings.Contains(err.Error(), "lists no") {
+		t.Errorf("err = %v, want the scanner's own error, not a misleading 'lists no'", err)
+	}
 }
 
 func TestEmbeddedKeyMatchesThePin(t *testing.T) {
