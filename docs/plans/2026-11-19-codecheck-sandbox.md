@@ -12,8 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
 - **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. `pins/pins.go`, `fetch/codecheck.go`, `fetch/download.go`
-  and `fetch/gpg.go` done; next comes `fetch/npmtar.go`.
+  its own worktree. Every M5 task done; next come the M5 review and pull
+  request, then M6 (host network) on a new branch once it merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -510,12 +510,19 @@ of repeating them.
     `SHA256SUMS` and signature for the pinned release sit in
     `internal/fetch/testdata/ubuntu/`; that test found Ubuntu armours its `.gpg`
     signature, so both armoured and binary signatures verify.
-- [ ] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
+- [x] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
       integrity, extract only `package/claude` (refusing links, absolute paths
       and `..`), cap the size, and check the binary's SHA-256. Never runs npm,
       Node or package scripts.
   - **Tests:** a fixture tarball covers a good file, a bad integrity, a bad
     binary hash, a path-traversal entry and a symlink entry.
+  - _Done:_ `ClaudeCodeBinary(d, workDir).Fetch(ctx, dest)`, built on
+    `NpmBinary` and a new `Downloader.DownloadSRI` (the download core now takes
+    any hash and check). Any unsafe entry, or the member appearing twice or not
+    at all, refuses the whole tarball; only files and folders count as safe. Cap
+    512 MiB. A one-off smoke test (since removed) fetched the real Firecracker
+    release and the real Claude Code tarball through this code: both verified,
+    and the 372.9 MB binary matched its pin.
 
 ## M6. Host network (`internal/hostnet`)
 

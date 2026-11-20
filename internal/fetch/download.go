@@ -1,17 +1,22 @@
 package fetch
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 )
@@ -41,6 +46,33 @@ func (d Downloader) Download(ctx context.Context, rawURL, want, dest string) err
 	if !sha256Pattern.MatchString(want) {
 		return fmt.Errorf("SHA-256 pin %q: want 64 lowercase hex characters", want)
 	}
+	return d.fetchTo(ctx, rawURL, dest, sha256.New(), func(sum []byte) error {
+		if got := hex.EncodeToString(sum); got != want {
+			return fmt.Errorf("%s: %w: got %s, want %s", filepath.Base(dest), ErrHashMismatch, got, want)
+		}
+		return nil
+	})
+}
+
+// DownloadSRI works like Download, but checks an npm-style integrity string
+// ("sha512-" and the base64 digest) instead of a SHA-256.
+func (d Downloader) DownloadSRI(ctx context.Context, rawURL, integrity, dest string) error {
+	b64, ok := strings.CutPrefix(integrity, "sha512-")
+	want, err := base64.StdEncoding.DecodeString(b64)
+	if !ok || err != nil || len(want) != sha512.Size {
+		return fmt.Errorf("integrity %q: want sha512- and a base64 SHA-512", integrity)
+	}
+	return d.fetchTo(ctx, rawURL, dest, sha512.New(), func(sum []byte) error {
+		if !bytes.Equal(sum, want) {
+			return fmt.Errorf("%s: %w: integrity differs from %s", filepath.Base(dest), ErrHashMismatch, integrity)
+		}
+		return nil
+	})
+}
+
+// fetchTo downloads rawURL into a temporary file beside dest while hashing it
+// with h, and renames the file into place only when check accepts the sum.
+func (d Downloader) fetchTo(ctx context.Context, rawURL, dest string, h hash.Hash, check func(sum []byte) error) error {
 	if err := httpsOnly(rawURL); err != nil {
 		return err
 	}
@@ -80,14 +112,13 @@ func (d Downloader) Download(ctx context.Context, rawURL, want, dest string) err
 		}
 	}()
 
-	h := sha256.New()
 	pw := &progressWriter{report: d.report(ctx, filepath.Base(dest)), total: resp.ContentLength}
 	if _, err := io.Copy(io.MultiWriter(tmp, h, pw), resp.Body); err != nil {
 		return fmt.Errorf("downloading %s: %w", filepath.Base(dest), err)
 	}
 	pw.flush()
-	if got := hex.EncodeToString(h.Sum(nil)); got != want {
-		return fmt.Errorf("%s: %w: got %s, want %s", filepath.Base(dest), ErrHashMismatch, got, want)
+	if err := check(h.Sum(nil)); err != nil {
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		return err
