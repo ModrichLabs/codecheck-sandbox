@@ -2,7 +2,7 @@
 
 ## Where we are (resume here)
 
-_Updated 2026-11-20._
+_Updated 2026-11-21._
 
 - **Done:** M0 (spikes S1–S5 and the gate; all spec amendments approved) and M1
   (scaffold, command tree, licence, community files, documentation skeleton).
@@ -11,11 +11,14 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
-  (#7) and M6 host network (#9) into `main`.
-- **In progress:** M7, egress proxy, on branch `feat/egress-proxy` in its own
-  worktree. Every M7 task done and the `/code-review medium` findings handled;
-  next come the M7 pull request, then M8 (guest init and assets) on a new branch
-  once it merges.
+  (#7), M6 host network (#9) and M7 egress proxy (#10) into `main`.
+- **In progress:** M8, guest init and assets, on branch `feat/guest-init` in its
+  own worktree. Every M8 task done; `/code-review medium` found 6 issues, all
+  fixed (unmount `/out` before the reboot, port range in `Encode`, folder times,
+  a code disk for selftests, redaction of streamed stderr, `no_output` probes).
+  Next: the M8 pull request, then M9 (launch helper) once it merges. The
+  maintainer chose (2026-11-21) to have the host precompute diff-mode changes,
+  so Claude gets no Bash at all (spec amendment 9).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -715,46 +718,142 @@ of repeating them.
 
 ## M8. Guest init and assets (`cmd/cc-guestinit`, `internal/guestinit`, `assets/guest/`)
 
-- [ ] `internal/guestinit/config.go`: parse the fixed 4 KB key=value block from
+- [x] `internal/guestinit/config.go`: parse the fixed 4 KB key=value block from
       the raw config device (mode `build`, `review` or `selftest`, plus run
       settings). **Tests:** valid blocks, unknown keys, oversize values, missing
       mode.
-- [ ] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
+  - _Done:_ keys `mode`, `run_id`, `max_budget_usd`, `scope` (`full` or `diff`),
+    `base` (a full 40- or 64-hex commit, diff only) and `probe_ports` (selftest
+    only). The parser fails closed: exactly 4096 bytes, every line
+    newline-terminated, nothing but NULs after the text, values of 128 bytes at
+    most, no repeated or unknown keys, and no key outside its mode. `Encode`
+    writes the same block for the host. **For M9/M11:** build the config device
+    with `guestinit.Encode`.
+- [x] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
       over writable paths, code disk read-only at `/work`, output disk at
       `/out`), `eth0` at 172.16.0.2 with no default route and IPv6 off, then
       runs `cc-claude` or `cc-selftest` as `agent` through `setpriv`, and writes
       `exit-code` to `/out`. Mounts and commands go through an interface, so
       tests use fakes.
-- [ ] `internal/guestinit/build.go`: as root, copy the base tree from the
+  - _Done:_ the `Sys` interface (mount, files, device read, sync) plus
+    `system.Runner`, which gained `Stdout`/`Stderr` writers, `Dir` and `Chroot`
+    (`PrivRunner` refuses them on root commands). Drive order: `vda` root, `vdb`
+    config, `vdc` code and `vdd` output, for reviews and selftests alike (after
+    the code review: a selftest's code disk can sit empty, and its
+    `work-read-only` probe then checks the real mount). The code disk mounts
+    `ro,nosuid,nodev,noexec,noload` (no journal replay); tmpfs covers `/tmp`,
+    `/run`, `/var/tmp` and the agent's 0700 home. The agent runs as uid 10001
+    via
+    `setpriv --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all`,
+    with a clean environment holding only `PATH`, `HOME` and `CC_*` settings;
+    the init (as root) opens `/out/stream.jsonl` and `/out/stderr.log` (0600),
+    so the agent can't touch `/out` itself. After the job it writes `exit-code`,
+    syncs and unmounts `/out`, since `debugfs` ignores the journal. **For M9:**
+    attach drives in that order, and cap the copies off `/out`, since the guest
+    caps nothing but the disk size.
+- [x] `internal/guestinit/build.go`: as root, copy the base tree from the
       squashfs onto the target disk (keeping owners, modes, setuid and links),
       add the inputs disk's files (`claude`, the plugin, `cc-claude`,
       `cc-selftest`, `cc-guestinit` itself, the CA via
       `update-ca-certificates`), create the `agent` user, and set git's
       `safe.directory`. **Tests:** against a temp-dir tree with fakes for the
       privileged calls.
-- [ ] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
+  - _Done:_ the squashfs lacks `cc-guestinit`, so **the build VM boots a
+    one-file initramfs** holding it as `/init` (as in spike S1) and mounts its
+    own disks: `vda` the squashfs (read-only), `vdb` config, `vdc` inputs
+    (`ro,nosuid,nodev,noexec,noload`), `vdd` the blank target. `CopyTree` keeps
+    owners, modes (chmod after chown, so setuid survives), symlinks, hard links,
+    device nodes and times, never follows or overwrites anything in the target
+    (`O_EXCL|O_NOFOLLOW`, proved by dropping the flags), and drops extended
+    attributes, so file capabilities go. Inputs land root-owned with fixed
+    modes: `claude`, `cc-claude` and `cc-selftest` in `/usr/local/bin`,
+    `cc-guestinit` in `/usr/local/sbin` (review VMs boot it with `init=`), the
+    CA in `/usr/local/share/ca-certificates/codecheck-sandbox.crt`, the plugin
+    (plain files and folders only) in `/opt/codecheck/plugin`. The target's own
+    `useradd` (uid 10001) and `update-ca-certificates` run chrooted with `/dev`
+    and `/proc` bound in. A marker, `/etc/codecheck-sandbox/build-complete`,
+    holds the run id. **Deviation:** `safe.directory` moves to `cc-claude`,
+    since `GIT_CONFIG_NOSYSTEM=1` ignores `/etc/gitconfig`. **For M10:** pack
+    the initramfs (a newc cpio of `/init`), lay out the inputs disk with those
+    names, check the marker with `debugfs` and hash the disk on the host.
+- [x] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
       picks the mode, and always ends with `reboot(LINUX_REBOOT_CMD_RESTART)`,
       even after a panic (spike S1: power-off hangs). **Test:** mode dispatch
       and the deferred reboot through an injectable syscall.
-- [ ] `cc-claude`:
+  - _Done:_ the logic lives in `guestinit.RunInit` (dispatch, then sync and
+    reboot from a deferred function that also recovers a panic); `main` adds a
+    guard that refuses any PID but 1, so running it on a host by mistake can't
+    reboot anything. A test builds it with `CGO_ENABLED=0` and checks the ELF
+    has no interpreter or shared libraries. The init doesn't reap orphaned
+    grandchildren; a VM lives for one job, so zombies cost nothing before the
+    reboot. **For M10:** build it the same way and append `panic=1` to the boot
+    arguments, so a failed reboot still ends the VM.
+- [x] `cc-claude`:
   - fixed flags (spec §6):
     `-p --restricted --strict-mcp-config --tools Read,Grep,Glob,Agent,Skill --allowedTools Read,Grep,Glob,Agent,Skill --plugin-dir … --permission-mode dontAsk --max-budget-usd … --no-session-persistence --output-format stream-json --verbose`;
     never `--bare`
   - the placeholder key, `NODE_EXTRA_CA_CERTS`, the telemetry variables, and
     `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`
-  - in diff mode, a git allowlist that excludes `--ext-diff`, `--output` and
-    `-c`
-- [ ] `cc-selftest`: the eight original probes, plus other host ports, IPv6
+  - ~~in diff mode, a git allowlist that excludes `--ext-diff`, `--output` and
+    `-c`~~ (replaced by spec amendment 9)
+  - _Done:_ `assets/guest/cc-claude`, a bash script embedded as `assets.Guest`.
+    It checks `CC_MAX_BUDGET_USD`, `CC_SCOPE` and `CC_BASE` against the same
+    patterns as the config parser, puts the prompt straight after `-p`
+    (`--allowedTools` takes several values and would swallow a trailing prompt),
+    runs in `/work/src`, and sets `safe.directory` through `GIT_CONFIG_COUNT`
+    (the command scope, which git trusts). **Spec amendment 9** (the
+    maintainer's choice, 2026-11-21): the diff prompt points Claude at
+    `/work/change/diff.patch` and `/work/change/status.txt`, so the tool list
+    never grows. Tests run the script against a stand-in `claude` and check the
+    argument vector and environment, plus a text check for `--restricted`,
+    `--strict-mcp-config`, the exact `--tools` list, and no `--bare` or `Bash`;
+    disabling the budget check failed two of them.
+- [x] `cc-selftest`: the eight original probes, plus other host ports, IPv6
       link-local, a Docker-published port when present, DNS, and a spoofed
       source address using `ip addr add` (which the probe should not manage to
       do as `agent`).
-- [ ] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
+  - _Done:_ `assets/guest/cc-selftest`, in bash, using `/dev/tcp` (the image has
+    no `nc`). The eight originals, from the safe-deployment plan's selftest:
+    `no-direct-internet`, `no-host-ssh`, `no-dns`, `proxy-blocks-github`,
+    `work-read-only`, `root-read-only`, `config-hidden` and
+    `proxy-allows-anthropic` (the one that must succeed). The extensions:
+    `host-port-N` over common service ports, Docker's API and the ports in
+    `CC_PROBE_PORTS` (never the proxy's), `docker-bridge-N` on 172.17.0.1,
+    `no-ipv6` (no address on `eth0`, link-local included), `no-default-route`,
+    `no-spoofed-source` and `no-sudo`. Output: `PASS|FAIL <id> <what>` lines,
+    then `SUMMARY n passed, m failed`, exit 1 on any failure. Tests source the
+    script (which then runs nothing) to check the verdict logic and the port
+    list, which refuses anything but numbers. **For M11/M13:** parse those lines
+    from `/out/stream.jsonl` (text, despite the name), report failed probe ids
+    to telemetry, and fill `probe_ports` from Docker's published ports when
+    Docker runs.
+- [x] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
       The build VM has no `network-interfaces` entry; the boot arguments never
       repeat `pci=off` or `virtio_mmio` (spike S2).
-- [ ] `assets_test.go`: when `shellcheck` exists, run it on every script;
+  - _Done:_ rendered by `guestinit.RenderVM`, beside the drive constants, so the
+    host and the guest share one drive order. Golden files for the review,
+    selftest and build VMs under `internal/guestinit/testdata/golden/`
+    (`-update` rewrites them). Review and selftest VMs boot the image with
+    `rootfstype=ext4 init=/usr/local/sbin/cc-guestinit` and get `eth0` on the
+    tap; the build VM boots the initramfs with no root device and no network.
+    Every config carries `console=ttyS0 reboot=k panic=1 quiet`. `RenderVM`
+    refuses disks, an initrd or a tap the mode doesn't take, paths other than
+    plain names inside the jail, 1–8 vCPUs and 256–16384 MiB only. **For
+    M9/M10:** stage the files under those names in the jail and pass the
+    rendered file to `--config-file`; check it against the real Firecracker
+    there.
+- [x] `assets_test.go`: when `shellcheck` exists, run it on every script;
       otherwise skip with a message. Also check that `cc-claude` carries
       `--restricted`, `--strict-mcp-config` and the exact `--tools` list, and
       never `--bare`.
+  - _Done:_ every file in `assets/guest` with a shebang must start
+    `#!/bin/bash`, pass `bash -n`, and pass ShellCheck at style severity when it
+    exists. This machine lacks it, so the run went through
+    `mise exec shellcheck@0.11.0`, which caught two deliberate SC2016 cases in
+    `cc-selftest` (now marked with reasons). CONTRIBUTING says how to run it.
+    The flag contract lives in `TestCCClaudeTextContract` (cc-claude task).
+    **For M15:** the repository has no CI yet; a workflow should run ShellCheck
+    rather than skip it.
 
 ## M9. Launch helper (`cmd/cc-launch`, `internal/launch`)
 
@@ -821,6 +920,10 @@ of repeating them.
     for paths).
   - `--pr N` fetches `pull/N/head`.
   - `--base REF`, or the merge base with the default branch, sets diff mode.
+  - In diff mode, after `harden.go`, write `git diff <base>` and
+    `git status --porcelain` (run through `system.Runner` with a clean
+    environment) to `change/diff.patch` and `change/status.txt` beside the clone
+    (spec amendment 9).
 
   **Tests** use local git repos in `t.TempDir()`.
 
@@ -828,9 +931,11 @@ of repeating them.
       settings and remote only), and remove `.git/hooks`. **Test:** a planted
       `diff.external` and a hook both disappear.
 - [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
-      from `du` plus 30%; the config block (key=value, fixed 4 KB, no secrets:
-      mode, budget, prompt, baseline); and a blank output disk. **Tests** run
-      against small fixtures when `mkfs.ext4` exists.
+      from `du` plus 30%, with the clone at `src/` and any diff files at
+      `change/`; the config block from `guestinit.Encode` (fixed 4 KB, no
+      secrets: mode, budget, scope, baseline; the prompt lives in `cc-claude`);
+      and a blank output disk. **Tests** run against small fixtures when
+      `mkfs.ext4` exists.
 - [ ] `review/postrun.go`, from the extracted files:
   - the result event (`subtype`, `is_error`, `total_cost_usd`)
   - refusal patterns

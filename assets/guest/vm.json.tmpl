@@ -1,0 +1,33 @@
+{
+  "boot-source": {
+    "kernel_image_path": {{json .Kernel}},
+{{- if .Initrd}}
+    "initrd_path": {{json .Initrd}},
+{{- end}}
+    "boot_args": {{json .BootArgs}}
+  },
+  "drives": [
+{{- range $i, $d := .Drives}}{{if $i}},{{end}}
+    {
+      "drive_id": {{json $d.ID}},
+      "path_on_host": {{json $d.Path}},
+      "is_root_device": {{$d.Root}},
+      "is_read_only": {{$d.ReadOnly}}
+    }
+{{- end}}
+  ],
+  "machine-config": {
+    "vcpu_count": {{.VCPUs}},
+    "mem_size_mib": {{.MemMiB}},
+    "smt": false
+  }
+{{- if .Tap}},
+  "network-interfaces": [
+    {
+      "iface_id": "eth0",
+      "guest_mac": "06:00:ac:10:00:02",
+      "host_dev_name": {{json .Tap}}
+    }
+  ]
+{{- end}}
+}

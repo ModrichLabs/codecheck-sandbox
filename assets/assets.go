@@ -9,6 +9,13 @@ import "embed"
 //go:embed host/*.tmpl
 var Host embed.FS
 
+// Guest holds the files that go into the guest image or describe its VMs
+// (M8): the cc-claude and cc-selftest scripts and the Firecracker config
+// template.
+//
+//go:embed guest
+var Guest embed.FS
+
 // UbuntuCloudImageKey holds the "UEC Image Automatic Signing Key", which
 // signs Ubuntu's cloud image SHA256SUMS. Its fingerprint matches
 // pins.Ubuntu.KeyFingerprint; a test checks that.

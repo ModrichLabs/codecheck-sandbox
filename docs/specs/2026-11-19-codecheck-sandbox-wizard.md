@@ -254,9 +254,14 @@ copies and validates (size limits, ext4 superblock check).
   `--tools` says (spike S4). `--restricted` ignores user, project and local
   settings and removes the command-running tools and WebFetch; `--tools` fixes
   the exact tool set.
-- **Diff mode:** `review` writes a clean `.git/config` into the clone.
-  `cc-claude` sets `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`,
-  and the allowed git patterns exclude `--ext-diff`, `--output` and `-c`.
+- **Diff mode** (amendment 9): Claude runs no git in the guest, since it has no
+  shell. On the host, `review` runs `git diff <baseline>` and
+  `git status --porcelain` in the hardened clone and writes their output to
+  `/work/change/diff.patch` and `/work/change/status.txt` on the code disk, with
+  the clone itself at `/work/src`. `cc-claude`'s prompt names the baseline and
+  both files. `review` still writes a clean `.git/config`, and `cc-claude` sets
+  `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null` and `safe.directory`
+  through `GIT_CONFIG_COUNT`, for any git Claude Code runs on its own.
 
 ### 7. The setup wizard flow
 
@@ -425,6 +430,11 @@ needs the user's consent.
    sits under umask permissions or echoes back as command output. Root commands
    run as `<tool> -n -- <cmd>`, or
    `run0 --no-ask-password --setenv=LC_ALL=C -- <cmd>`.
+9. **Host-computed diffs** (M8, approved 2026-11-21): CodeCheck's diff-aware
+   review has sub-agents run `git diff` and `git status`, but `--restricted`
+   with the fixed `--tools` list leaves Claude no shell. The host now writes
+   both outputs to the code disk, and `cc-claude`'s prompt points Claude at
+   them; Claude never gets Bash, and the planned git allowlist goes.
 
 ## Review outcome (independent Plan-agent review)
 

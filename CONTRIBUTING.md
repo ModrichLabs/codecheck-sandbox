@@ -50,6 +50,11 @@ go test ./...
   npx --yes prettier@3.9.10 --check .
   ```
 
+  `go test` also runs ShellCheck on the guest scripts in `assets/guest/` when
+  `shellcheck` sits on your `PATH`, and skips that check otherwise; install it,
+  or run `mise exec shellcheck@0.11.0 -- go test ./assets/`, before changing a
+  script.
+
 - **Docs travel with code.** A change in behaviour updates the matching page in
   [docs/usage/](docs/usage/) or [docs/architecture.md](docs/architecture.md) in
   the same pull request.
