@@ -96,24 +96,29 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	return res, err
 }
 
-// loginReplies match what each privilege tool prints when -n meets a missing
-// login: sudo and run0 checked on a real host, sudo-rs and doas from their
-// sources.
-var loginReplies = []string{
-	"a password is required",              // sudo
-	"authentication is required",          // sudo-rs
-	"authentication required",             // doas
-	"requires interactive authentication", // run0 (polkit)
-	"authorization required",              // doas variants
+// loginReplies pair the prefix a privilege tool puts on its own messages with
+// what it says when -n meets a missing login: sudo and run0 checked on a real
+// host, sudo-rs and doas from their sources. Matching the prefix too keeps a
+// root command's own "authorization required" from passing for one.
+var loginReplies = []struct{ prefix, says string }{
+	{"sudo:", "a password is required"},
+	{"sudo-rs:", "authentication is required"},
+	{"sudo:", "authentication is required"}, // sudo-rs installed as sudo
+	{"doas:", "authentication required"},
+	{"doas:", "authorization required"},
+	{"failed to start transient service unit:", "requires interactive authentication"}, // run0
 }
 
-// needsLogin reports whether stderr says the tool wanted a password, which
-// the engine treats like an expired login and answers with a handover.
+// needsLogin reports whether a line of stderr comes from the privilege tool
+// and says it wanted a password, which the engine treats like an expired
+// login and answers with a handover.
 func needsLogin(stderr []byte) bool {
-	s := strings.ToLower(string(stderr))
-	for _, r := range loginReplies {
-		if strings.Contains(s, r) {
-			return true
+	for line := range strings.Lines(strings.ToLower(string(stderr))) {
+		line = strings.TrimSpace(line)
+		for _, r := range loginReplies {
+			if strings.HasPrefix(line, r.prefix) && strings.Contains(line, r.says) {
+				return true
+			}
 		}
 	}
 	return false

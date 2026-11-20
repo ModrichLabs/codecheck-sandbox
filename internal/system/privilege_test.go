@@ -124,12 +124,15 @@ func TestPrivRunnerReportsAMissingLoginAsExpired(t *testing.T) {
 			t.Errorf("%s: err = %v, want ErrLoginExpired so the engine hands over", kind, err)
 		}
 	}
-	// A root command's own failure stays a plain non-zero exit.
-	f := &FakeRunner{}
-	f.On("/bin/sudo").Return(Result{Code: 1, Stderr: []byte("Error: No such file or directory\n")})
-	res, err := (PrivRunner{Inner: f, Tool: Tool{Kind: ToolSudo, Path: "/bin/sudo"}}).Run(context.Background(), Cmd{Name: "nft", Root: true})
-	if err != nil || res.Code != 1 {
-		t.Errorf("Run = %+v, %v; want the command's own exit 1", res, err)
+	// A root command's own failure stays a plain non-zero exit, even when
+	// its words sound like a login demand.
+	for _, stderr := range []string{"Error: No such file or directory\n", "Authorization required\n", "firewall-cmd: authentication required\n"} {
+		f := &FakeRunner{}
+		f.On("/bin/sudo").Return(Result{Code: 1, Stderr: []byte(stderr)})
+		res, err := (PrivRunner{Inner: f, Tool: Tool{Kind: ToolSudo, Path: "/bin/sudo"}}).Run(context.Background(), Cmd{Name: "nft", Root: true})
+		if err != nil || res.Code != 1 {
+			t.Errorf("stderr %q: Run = %+v, %v; want the command's own exit 1", stderr, res, err)
+		}
 	}
 }
 

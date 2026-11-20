@@ -12,7 +12,8 @@ ExecStartPre=-ip link del dev cc-tap0
 # The rules load first, so the tap never exists without them.
 ExecStart=nft -f /etc/codecheck-sandbox/rules.nft
 ExecStart=ip tuntap add dev cc-tap0 mode tap user fcjail
-ExecStart=sysctl -q -w net.ipv6.conf.cc-tap0.disable_ipv6=1
+# "-": a host booted with ipv6.disable=1 has no IPv6 to switch off.
+ExecStart=-sysctl -q -w net.ipv6.conf.cc-tap0.disable_ipv6=1
 ExecStart=ip addr add 172.16.0.1/30 dev cc-tap0
 ExecStart=ip link set dev cc-tap0 up
 ExecStop=-ip link del dev cc-tap0

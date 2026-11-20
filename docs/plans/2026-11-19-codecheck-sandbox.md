@@ -13,8 +13,9 @@ _Updated 2026-11-20._
   logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
   downloads (#7) into `main`.
 - **In progress:** M6, host network, on branch `feat/host-network` in its own
-  worktree. Every M6 task done; next come the M6 review and pull request, then
-  M7 (egress proxy) on a new branch once it merges.
+  worktree. Every M6 task done and the `/code-review medium` findings fixed;
+  next come the M6 pull request, then M7 (egress proxy) on a new branch once it
+  merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -609,6 +610,17 @@ of repeating them.
     wording checked on this host, sudo-rs's and doas's from their sources. The
     manifest allowlist gains `firewalld zone codecheck` and
     `ufw allow cc-tap0 3180`.
+  - _Review:_ `/code-review medium` found 10 issues, all fixed test-first. The
+    login match now needs the tool's own prefix (`sudo:`, `doas:`, run0's line),
+    so a root command's own "authorization required" stays its error. The rules
+    undo treats a table the tap service already removed as gone; the unit's IPv6
+    `sysctl` carries `-` for `ipv6.disable=1` hosts; `Steps` de-duplicates
+    records, since the engine retries `Apply` after a handover; the tap check
+    also needs `ip link show dev cc-tap0`; firewalld checks its zone query,
+    plans `--new-zone` only when needed (asking without root, since the engine
+    elevates after planning) and skips `--reload` when stopped; the SELinux and
+    ufw checks report failed commands; `Validate` refuses the subnet's network
+    and broadcast addresses. `systemd-analyze verify` accepts the rendered unit.
 
 ## M7. Egress proxy (`internal/proxy`)
 

@@ -70,6 +70,13 @@ func (c Config) Validate() error {
 	if c.PrefixLen < 24 || c.PrefixLen > 30 || !prefix.Masked().Contains(guest) || host == guest {
 		return fmt.Errorf("guest %s must sit beside host %s in a /24 to /30", c.GuestIP, c.HostIP)
 	}
+	network := prefix.Masked().Addr()
+	broadcast := lastAddr(prefix.Masked())
+	for _, a := range []netip.Addr{host, guest} {
+		if a == network || a == broadcast {
+			return fmt.Errorf("%s: the subnet's network or broadcast address can't serve a host", a)
+		}
+	}
 	if c.ProxyPort < 1024 || c.ProxyPort > 65535 {
 		return fmt.Errorf("proxy port %d: want 1024 to 65535", c.ProxyPort)
 	}
@@ -104,6 +111,15 @@ func Render(c Config) ([]step.PlannedFile, error) {
 		out = append(out, step.PlannedFile{Path: f.path, Mode: 0o644, Content: buf.Bytes()})
 	}
 	return out, nil
+}
+
+// lastAddr returns an IPv4 prefix's broadcast address.
+func lastAddr(p netip.Prefix) netip.Addr {
+	b := p.Addr().As4()
+	host := 32 - p.Bits()
+	n := uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+	n |= 1<<host - 1
+	return netip.AddrFrom4([4]byte{byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
 }
 
 func pathBase(p string) string {

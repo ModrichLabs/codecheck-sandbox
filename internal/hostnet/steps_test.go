@@ -347,8 +347,110 @@ func TestTapServiceStep(t *testing.T) {
 	r.write(t, "/etc/systemd/system/codecheck-net.service", rendered(t, ".service"), 0o644)
 	r.run.On("systemctl", "is-enabled").Return(ok(0))
 	r.run.On("systemctl", "is-active").Return(ok(0))
+	r.run.On("ip", "link", "show", "dev", "cc-tap0").Return(ok(0))
 	if !check(t, r.step(t, "host-tap-service")).OK {
 		t.Error("an enabled, active, current unit failed")
+	}
+
+	// A oneshot unit stays "active" after someone deletes the tap.
+	r = newRig()
+	r.write(t, "/etc/systemd/system/codecheck-net.service", rendered(t, ".service"), 0o644)
+	r.run.On("systemctl", "is-enabled").Return(ok(0))
+	r.run.On("systemctl", "is-active").Return(ok(0))
+	r.run.On("ip", "link", "show").Return(ok(1))
+	if check(t, r.step(t, "host-tap-service")).OK {
+		t.Error("passed with the tap gone")
+	}
+}
+
+func TestUnitToleratesAHostWithoutIPv6(t *testing.T) {
+	if !strings.Contains(rendered(t, ".service"), "ExecStart=-sysctl -q -w net.ipv6.conf.cc-tap0.disable_ipv6=1") {
+		t.Error("the IPv6 sysctl must carry '-', or ipv6.disable=1 hosts fail the unit")
+	}
+}
+
+func TestRulesUndoAfterTheTapServiceRemovedTheTable(t *testing.T) {
+	r := newRig()
+	r.run.On("nft", "delete").Return(system.Result{Code: 1, Stderr: []byte("Error: Could not process rule: No such file or directory\ndelete table inet codecheck\n")})
+	err := r.step(t, "host-rules").Undo(context.Background(), []step.Item{{Kind: step.KindNetwork, Name: "inet codecheck"}})
+	if err != nil {
+		t.Errorf("Undo = %v; a table already gone counts as removed", err)
+	}
+}
+
+func TestRecordsStayUniqueWhenApplyRunsTwice(t *testing.T) {
+	r := newRig()
+	s := r.step(t, "host-jail-user")
+	r.run.On("useradd").Return(ok(0))
+	r.run.On("useradd").Return(ok(0))
+	mustApply(t, s)
+	mustApply(t, s) // the engine retries Apply after a login handover
+	if len(r.records) != 1 {
+		t.Errorf("records = %+v, want one", r.records)
+	}
+}
+
+func TestFirewalldApplyChecksTheZoneQuery(t *testing.T) {
+	r := newRig()
+	r.run.On("firewall-cmd", "--permanent", "--get-zones").Return(system.Result{Code: 252, Stderr: []byte("FirewallD is not running")})
+	if err := r.step(t, "host-firewalld").Apply(context.Background()); err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Errorf("Apply = %v, want the failed zone query", err)
+	}
+}
+
+func TestFirewalldPlanSkipsAnExistingZone(t *testing.T) {
+	r := newRig()
+	r.run.On("firewall-cmd", "--permanent", "--get-zones").Return(system.Result{Stdout: []byte("codecheck public\n")})
+	plan, _ := r.step(t, "host-firewalld").Plan(context.Background())
+	for _, c := range plan.Cmds {
+		if slices.Contains(c.Args, "--new-zone=codecheck") {
+			t.Errorf("plan lists --new-zone although the zone exists: %+v", plan.Cmds)
+		}
+	}
+	if c := r.run.Calls()[0]; c.Root {
+		t.Error("the plan's zone query ran as root; the engine elevates only after planning")
+	}
+}
+
+func TestFirewalldUndoWithFirewalldStopped(t *testing.T) {
+	r := newRig()
+	r.run.On("firewall-cmd", "--permanent", "--delete-zone=codecheck").Return(ok(0))
+	r.run.On("systemctl", "is-active").Return(ok(3))
+	err := r.step(t, "host-firewalld").Undo(context.Background(), []step.Item{{Kind: step.KindNetwork, Name: "firewalld zone codecheck"}})
+	if err != nil {
+		t.Errorf("Undo = %v; with firewalld stopped, skip the reload", err)
+	}
+}
+
+func TestChecksReportFailedCommands(t *testing.T) {
+	r := newRig()
+	r.write(t, "/sys/fs/selinux/enforce", "1", 0o644)
+	_ = r.fs.MkdirAll("/srv/jailer", 0o711)
+	r.run.On("restorecon").Return(system.Result{Code: 255, Stderr: []byte("restorecon: lstat failed")})
+	if st, err := r.step(t, "host-selinux").Check(context.Background()); err == nil && st.OK {
+		t.Error("a failed restorecon passed as 'labels match'")
+	}
+
+	r = newRig()
+	r.write(t, "/etc/ufw/ufw.conf", "ENABLED=yes\n", 0o644)
+	r.run.On("ufw").Return(system.Result{Code: 1, Stderr: []byte("ERROR: problem running ufw-init")})
+	if _, err := r.step(t, "host-ufw").Check(context.Background()); err == nil {
+		t.Error("a failed ufw show added passed silently")
+	}
+}
+
+func TestConfigRefusesNetworkAndBroadcastAddresses(t *testing.T) {
+	for _, guest := range []string{"172.16.0.0", "172.16.0.3"} {
+		c := DefaultConfig()
+		c.GuestIP = guest
+		if c.Validate() == nil {
+			t.Errorf("guest %s accepted in 172.16.0.0/30", guest)
+		}
+	}
+	c := DefaultConfig()
+	c.HostIP, c.GuestIP = "172.16.0.0", "172.16.0.1"
+	if c.Validate() == nil {
+		t.Error("host on the network address accepted")
 	}
 }
 

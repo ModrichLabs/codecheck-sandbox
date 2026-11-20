@@ -49,6 +49,17 @@ func Steps(d Deps) ([]step.Step, error) {
 	if err := d.Config.Validate(); err != nil {
 		return nil, err
 	}
+	// The engine runs Apply again after a login handover, so the same item
+	// can come twice; the manifest keeps each once.
+	if rec := d.Record; rec != nil {
+		seen := map[step.Item]bool{}
+		d.Record = func(it step.Item) {
+			if !seen[it] {
+				seen[it] = true
+				rec(it)
+			}
+		}
+	}
 	return []step.Step{
 		d.jailUser(), d.jailerBase(), d.rules(), d.nmUnmanaged(),
 		d.tapService(), d.firewalld(), d.ufw(), d.selinux(),
@@ -330,7 +341,13 @@ func (d Deps) rules() step.Step {
 		undo: func(ctx context.Context, items []step.Item) error {
 			var errs []error
 			if hasNetwork(items, table) {
-				errs = append(errs, d.run(ctx, root("nft", "delete", "table", "inet", c.Table)))
+				// The tap service's ExecStop usually deleted the table
+				// already; a table already gone counts as removed.
+				res, err := d.Runner.Run(ctx, root("nft", "delete", "table", "inet", c.Table))
+				if err == nil && res.Code != 0 && !strings.Contains(string(res.Stderr), "No such file or directory") {
+					err = fmt.Errorf("nft delete table %s: %s", table, strings.TrimSpace(string(res.Stderr)))
+				}
+				errs = append(errs, err)
 			}
 			return errors.Join(append(errs, d.undoFiles(ctx, items))...)
 		},
@@ -410,6 +427,14 @@ func (d Deps) tapService() step.Step {
 			if !active {
 				return fail(unit + " not running")
 			}
+			// A oneshot unit stays active after someone deletes the tap.
+			c, err = d.code(ctx, system.Cmd{Name: "ip", Args: []string{"link", "show", "dev", d.Config.Tap}})
+			if err != nil {
+				return step.Status{}, err
+			}
+			if c != 0 {
+				return fail(d.Config.Tap + " missing although " + unit + " runs")
+			}
 			return pass(unit + " running")
 		},
 		plan: func(context.Context) (step.Plan, error) {
@@ -474,8 +499,15 @@ func (d Deps) firewalld() step.Step {
 			}
 			return pass("firewalld zone " + zone + " allows " + port + " on " + c.Tap)
 		},
-		plan: func(context.Context) (step.Plan, error) {
-			all := append([]system.Cmd{fc("--permanent", "--new-zone="+zone)}, cmds...)
+		plan: func(ctx context.Context) (step.Plan, error) {
+			// The engine elevates only after planning, so ask without root
+			// (polkit usually allows reading); if that fails, list the
+			// zone's creation, which Apply skips when the zone exists.
+			all := cmds
+			q := system.Cmd{Name: "firewall-cmd", Args: []string{"--permanent", "--get-zones"}}
+			if res, err := d.Runner.Run(ctx, q); err != nil || res.Code != 0 || !hasWord(res.Stdout, zone) {
+				all = append([]system.Cmd{fc("--permanent", "--new-zone="+zone)}, cmds...)
+			}
 			return step.Plan{Cmds: all, NeedsRoot: true}, nil
 		},
 		apply: func(ctx context.Context) error {
@@ -483,7 +515,10 @@ func (d Deps) firewalld() step.Step {
 			if err != nil {
 				return err
 			}
-			if !strings.Contains(" "+strings.TrimSpace(string(res.Stdout))+" ", " "+zone+" ") {
+			if res.Code != 0 {
+				return fmt.Errorf("firewall-cmd --get-zones: exit %d: %s", res.Code, strings.TrimSpace(string(res.Stderr)))
+			}
+			if !hasWord(res.Stdout, zone) {
 				if err := d.run(ctx, fc("--permanent", "--new-zone="+zone)); err != nil {
 					return err
 				}
@@ -495,9 +530,26 @@ func (d Deps) firewalld() step.Step {
 			if !hasNetwork(items, "firewalld zone "+zone) {
 				return nil
 			}
-			return d.runAll(ctx, []system.Cmd{fc("--permanent", "--delete-zone="+zone), fc("--reload")})
+			if err := d.run(ctx, fc("--permanent", "--delete-zone="+zone)); err != nil {
+				return err
+			}
+			// The permanent change stands; a stopped firewalld needs no reload.
+			if active, err := d.serviceActive(ctx, "firewalld"); err != nil || !active {
+				return err
+			}
+			return d.run(ctx, fc("--reload"))
 		},
 	}
+}
+
+// hasWord reports whether out lists word among its space-separated words.
+func hasWord(out []byte, word string) bool {
+	for _, w := range strings.Fields(string(out)) {
+		if w == word {
+			return true
+		}
+	}
+	return false
 }
 
 // --- ufw ---
@@ -529,6 +581,9 @@ func (d Deps) ufw() step.Step {
 			res, err := d.Runner.Run(ctx, root("ufw", "show", "added"))
 			if err != nil {
 				return step.Status{}, err
+			}
+			if res.Code != 0 {
+				return step.Status{}, fmt.Errorf("ufw show added: exit %d: %s", res.Code, strings.TrimSpace(string(res.Stderr)))
 			}
 			if !strings.Contains(string(res.Stdout), "ufw "+strings.Join(rule, " ")) {
 				return fail("ufw lacks the rule for " + c.Tap)
@@ -585,6 +640,9 @@ func (d Deps) selinux() step.Step {
 			res, err := d.Runner.Run(ctx, root("restorecon", append([]string{"-RnvF", "--"}, paths...)...))
 			if err != nil {
 				return step.Status{}, err
+			}
+			if res.Code != 0 {
+				return step.Status{}, fmt.Errorf("restorecon dry run: exit %d: %s", res.Code, strings.TrimSpace(string(res.Stderr)))
 			}
 			if strings.TrimSpace(string(res.Stdout)) != "" {
 				return fail("files need their default SELinux labels")
