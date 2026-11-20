@@ -98,7 +98,7 @@ var (
 var allowedNames = map[ItemKind][]string{
 	KindUser:    {"fcjail"},
 	KindUnit:    {"codecheck-net.service", "codecheck-proxy.service"},
-	KindNetwork: {"cc-tap0", "inet codecheck"},
+	KindNetwork: {"cc-tap0", "inet codecheck", "firewalld zone codecheck", "ufw allow cc-tap0 3180"},
 	KindPackage: {
 		"nftables", "e2fsprogs", "git",
 		"squashfs-tools", "squashfs", // openSUSE: squashfs
