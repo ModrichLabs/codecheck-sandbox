@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ModrichLabs/codecheck-sandbox/internal/rulehash"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/telemetry"
@@ -202,7 +203,7 @@ func TestJailerBaseStep(t *testing.T) {
 }
 
 func TestRulesStepCheck(t *testing.T) {
-	live, _ := HashRules(fixture(t))
+	live, _ := rulehash.Hash(fixture(t))
 	healthy := func() *rig {
 		r := newRig()
 		r.write(t, "/etc/codecheck-sandbox/rules.nft", rendered(t, "rules.nft"), 0o644)
@@ -238,7 +239,7 @@ func TestRulesStepCheck(t *testing.T) {
 
 func TestRulesStepApplyRecordsTheLiveHash(t *testing.T) {
 	r := newRig()
-	live, _ := HashRules(fixture(t))
+	live, _ := rulehash.Hash(fixture(t))
 	r.run.On("install", "-d").Return(ok(0))
 	r.run.On("install", "-d").Return(ok(0))
 	r.run.On("install", "-m").Return(ok(0))

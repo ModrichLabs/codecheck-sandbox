@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/ModrichLabs/codecheck-sandbox/internal/rulehash"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/telemetry"
@@ -322,7 +323,7 @@ func (d Deps) rules() step.Step {
 			if err != nil {
 				return fail("no recorded rule hash at " + c.HashPath)
 			}
-			live, err := LiveRuleHash(ctx, d.Runner, c.Table)
+			live, err := rulehash.Live(ctx, d.Runner, c.Table, true)
 			if errors.Is(err, system.ErrLoginExpired) {
 				return step.Status{}, err
 			}
@@ -364,7 +365,7 @@ func (d Deps) rules() step.Step {
 			d.record(step.Item{ID: idRules, Kind: step.KindNetwork, Name: table, State: step.Created})
 			// Hash the table as loaded here, since nft's JSON can differ
 			// between versions.
-			live, err := LiveRuleHash(ctx, d.Runner, c.Table)
+			live, err := rulehash.Live(ctx, d.Runner, c.Table, true)
 			if err != nil {
 				return err
 			}
