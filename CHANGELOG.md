@@ -21,4 +21,10 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
 - Licence (Apache-2.0), NOTICE crediting CodeCheck, and contribution, security
   and conduct guidelines.
 
+### Security
+
+- Upgrade the indirect dependency `github.com/klauspost/compress` to v1.20.3 for
+  CVE-2026-63209. The vulnerable `s2` package never compiled into the binary,
+  which uses only `zstd` through `posthog-go`.
+
 [Unreleased]: https://github.com/ModrichLabs/codecheck-sandbox/commits/main
