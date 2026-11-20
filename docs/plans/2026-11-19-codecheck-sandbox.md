@@ -857,10 +857,18 @@ of repeating them.
 
 ## M9. Launch helper (`cmd/cc-launch`, `internal/launch`)
 
-- [ ] `launch/runid.go`: run ids must match
+- [x] `launch/runid.go`: run ids must match
       `^cc-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$`. The run folder sits at
       `/var/lib/codecheck-sandbox/runs/<id>`, and only the CLI writes there,
       through `sudo tee`. **Tests:** valid and invalid ids, and path traversal.
+  - _Done:_ a `RunID` type that only `ParseRunID` and `NewRunID` (UTC time plus
+    six random characters) make, and `launch.Paths` with every fixed path in one
+    place: the binaries in `/usr/local/lib/codecheck-sandbox/bin/`
+    (`firecracker`, `jailer`), the kernel and root disk as
+    `/var/lib/codecheck-sandbox/{vmlinux,rootfs.ext4}`. First, a refactor:
+    `hostnet`'s rule hash moved to `internal/rulehash`, since `hostnet` imports
+    telemetry and `cc-launch` must not; `rulehash.Live` takes a `root` switch.
+    **For M10/M11:** make run ids with `launch.NewRunID`.
 - [ ] `launch/verify.go`, in order:
   1. the lock
   2. the kernel and root disk SHA-256 against
