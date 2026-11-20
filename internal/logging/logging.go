@@ -144,8 +144,8 @@ func openRotating(path string, max int64) (*rotating, error) {
 }
 
 // OpenRotating returns a writer that appends to path, rotating at max bytes
-// and keeping five files, each created with mode. The proxy's denial log uses
-// it with 0644, since the CLI reads that log after each run.
+// and keeping five files, each created with mode. The proxy's denial log
+// uses it.
 func OpenRotating(path string, max int64, mode os.FileMode) (io.WriteCloser, error) {
 	r := &rotating{path: path, max: max, mode: mode}
 	return r, r.open()

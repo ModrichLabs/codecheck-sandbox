@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
@@ -30,6 +31,27 @@ type Deps struct {
 	// Executable names the running binary, which the proxy step installs;
 	// nil means os.Executable.
 	Executable func() (string, error)
+
+	// proxyChanged notes that a step replaced something the running proxy
+	// loaded at start (its binary, CA or key), so the service must restart.
+	// Steps creates it, so all the steps of one run share it.
+	proxyChanged *atomic.Bool
+}
+
+// selinuxEnforcing reports whether SELinux enforces on this host.
+func (d Deps) selinuxEnforcing() bool {
+	b, err := d.FS.ReadFile("/sys/fs/selinux/enforce")
+	return err == nil && strings.TrimSpace(string(b)) == "1"
+}
+
+// relabel gives new files their default SELinux labels straight away, so a
+// service started later in the same run can use them; without enforcing
+// SELinux it does nothing.
+func (d Deps) relabel(ctx context.Context, paths ...string) error {
+	if !d.selinuxEnforcing() {
+		return nil
+	}
+	return d.run(ctx, root("restorecon", append([]string{"-F", "--"}, paths...)...))
 }
 
 const (
@@ -56,6 +78,7 @@ func Steps(d Deps) ([]step.Step, error) {
 	if err := d.Config.Validate(); err != nil {
 		return nil, err
 	}
+	d.proxyChanged = &atomic.Bool{}
 	// The engine runs Apply again after a login handover, so the same item
 	// can come twice; the manifest keeps each once.
 	if rec := d.Record; rec != nil {
@@ -458,6 +481,9 @@ func (d Deps) tapService() step.Step {
 				return err
 			}
 			d.record(step.Item{ID: idTap, Kind: step.KindFile, Path: unitFile.Path, State: step.Created})
+			if err := d.relabel(ctx, unitFile.Path); err != nil {
+				return err
+			}
 			if err := d.runAll(ctx, cmds); err != nil {
 				return err
 			}
@@ -636,14 +662,10 @@ func (d Deps) selinux() step.Step {
 		}
 		return out
 	}
-	enforcing := func() bool {
-		b, err := d.FS.ReadFile("/sys/fs/selinux/enforce")
-		return err == nil && strings.TrimSpace(string(b)) == "1"
-	}
 	return hostStep{
 		id: idSELinux, title: "SELinux labels",
 		check: func(ctx context.Context) (step.Status, error) {
-			if !enforcing() {
+			if !d.selinuxEnforcing() {
 				return pass("SELinux not enforcing; nothing to do")
 			}
 			paths := present()

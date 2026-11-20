@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -23,12 +24,14 @@ import (
 // for the real key and refuses anything else.
 const Placeholder = "sk-ant-sandbox-placeholder"
 
-// Default caps per tunnel. Keep-alive lets a whole review share one tunnel,
-// so these stay generous; --max-budget-usd bounds the spend, and the caps stop
-// a runaway loop.
+// Default caps. Requests and bytes count per tunnel, and keep-alive lets a
+// whole review share one tunnel, so these stay generous. They bound what one
+// tunnel carries, not a run: a client can open another tunnel, up to
+// DefaultMaxTunnels at once. --max-budget-usd bounds a run's spend.
 const (
 	DefaultMaxRequests = 5000
 	DefaultMaxBytes    = 2 << 30
+	DefaultMaxTunnels  = 16
 )
 
 // allowed lists the paths Claude Code needs (spike S4), with their methods.
@@ -52,12 +55,14 @@ type Config struct {
 	Upstream    http.RoundTripper
 	MaxRequests int64 // per tunnel; zero means DefaultMaxRequests
 	MaxBytes    int64 // per tunnel, both directions; zero means DefaultMaxBytes
+	MaxTunnels  int64 // open at once; zero means DefaultMaxTunnels
 }
 
 // Proxy implements the egress proxy as an http.Handler.
 type Proxy struct {
-	cfg Config
-	rp  *httputil.ReverseProxy
+	cfg     Config
+	rp      *httputil.ReverseProxy
+	tunnels atomic.Int64
 }
 
 // New checks cfg and builds a Proxy.
@@ -90,6 +95,9 @@ func New(cfg Config) (*Proxy, error) {
 	if cfg.MaxBytes <= 0 {
 		cfg.MaxBytes = DefaultMaxBytes
 	}
+	if cfg.MaxTunnels <= 0 {
+		cfg.MaxTunnels = DefaultMaxTunnels
+	}
 	p := &Proxy{cfg: cfg}
 	target := &url.URL{Scheme: "https", Host: APIHost}
 	p.rp = &httputil.ReverseProxy{
@@ -102,6 +110,11 @@ func New(cfg Config) (*Proxy, error) {
 		FlushInterval: -1, // stream server-sent events as they come
 		ErrorLog:      log.New(io.Discard, "", 0),
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			// A request the guest itself abandoned refuses nothing.
+			if errors.Is(err, context.Canceled) || r.Context().Err() != nil {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
 			p.deny(Denial{Reason: FailedUpstream, Client: r.RemoteAddr, Method: r.Method, Path: r.URL.Path})
 			p.cfg.Log.Warn("proxy: upstream failed", "path", r.URL.Path, "err", p.scrub(err.Error()))
 			w.WriteHeader(http.StatusBadGateway)
@@ -135,6 +148,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		refuse(DeniedHost, http.StatusForbidden)
 		return
 	}
+	if p.tunnels.Add(1) > p.cfg.MaxTunnels {
+		p.tunnels.Add(-1)
+		refuse(CapTunnels, http.StatusServiceUnavailable)
+		return
+	}
+	defer p.tunnels.Add(-1)
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "tunnel unavailable", http.StatusInternalServerError)

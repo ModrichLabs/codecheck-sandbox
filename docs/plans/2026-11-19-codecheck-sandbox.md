@@ -13,8 +13,9 @@ _Updated 2026-11-20._
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7) and M6 host network (#9) into `main`.
 - **In progress:** M7, egress proxy, on branch `feat/egress-proxy` in its own
-  worktree. Every M7 task done; next come the M7 review and pull request, then
-  M8 (guest init and assets) on a new branch once it merges.
+  worktree. Every M7 task done and the `/code-review medium` findings handled;
+  next come the M7 pull request, then M8 (guest init and assets) on a new branch
+  once it merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -665,7 +666,7 @@ of repeating them.
 - [x] `denylog.go`: a JSON-lines denial log under
       `/var/log/codecheck-sandbox/proxy.jsonl`, with rotation at 10 MB.
       **Test:** the format, and rotation.
-  - _Done:_ no header values, long fields cut, mode 0644 through a new
+  - _Done:_ no header values, long fields cut, mode 0600 through a new
     `logging.OpenRotating`. **For M11/M12:** with `DynamicUser=yes`, systemd
     places `LogsDirectory` under `/var/log/private` (root only), so the post-run
     checks read the denial log as root.
@@ -701,6 +702,16 @@ of repeating them.
     `host-proxy-service`. `Config.Validate` now also checks every path against
     the manifest allowlist. **For M10:** a new CA means a guest rebuild, since
     the guest trusts its certificate.
+  - _Review:_ `/code-review medium` found 8 issues; 7 fixed test-first. When the
+    binary, CA or key step applies, `host-proxy-service` restarts the service,
+    so the proxy never keeps old code or secrets. A key the wizard supplies
+    always gets written, so re-running setup replaces a revoked key. The CA
+    check reads the key as root and loads the pair. On enforcing SELinux, the
+    binary and unit files get relabelled as they land. A limit of 16 tunnels at
+    once joins the per-tunnel caps (which bound a tunnel, not a run). Requests
+    the guest cancels log nothing. The denial log stays 0600, since only root
+    can reach it anyway. **Pushed back:** no changelog entries yet, since
+    nothing a user runs reaches the proxy until M12/M13 wire setup up.
 
 ## M8. Guest init and assets (`cmd/cc-guestinit`, `internal/guestinit`, `assets/guest/`)
 

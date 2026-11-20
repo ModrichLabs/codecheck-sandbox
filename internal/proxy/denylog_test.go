@@ -61,7 +61,7 @@ func TestDenyLogRotates(t *testing.T) {
 		t.Errorf("no rotated file: %v", err)
 	}
 	info, _ := os.Stat(path)
-	if info.Size() > 512 || info.Mode().Perm() != 0o644 {
-		t.Errorf("current file: %d bytes, mode %v; want at most 512 and 0644", info.Size(), info.Mode().Perm())
+	if info.Size() > 512 || info.Mode().Perm() != 0o600 {
+		t.Errorf("current file: %d bytes, mode %v; want at most 512 and 0600", info.Size(), info.Mode().Perm())
 	}
 }

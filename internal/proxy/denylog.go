@@ -25,6 +25,7 @@ const (
 	DeniedKey      Reason = "denied-key"
 	CapRequests    Reason = "cap-requests"
 	CapBytes       Reason = "cap-bytes"
+	CapTunnels     Reason = "cap-tunnels"
 	FailedTLS      Reason = "tls-handshake"
 	FailedUpstream Reason = "upstream-error"
 )
@@ -58,9 +59,11 @@ type DenyLog struct {
 func NewDenyLog(w io.Writer) *DenyLog { return &DenyLog{w: w, now: time.Now} }
 
 // OpenDenyLog appends to path (normally /var/log/codecheck-sandbox/proxy.jsonl),
-// rotating at max bytes, with mode 0644 so the CLI can read it after a run.
+// rotating at max bytes. systemd keeps a DynamicUser's logs folder under
+// /var/log/private, which only root enters, so the post-run checks read this
+// log as root; the files stay 0600.
 func OpenDenyLog(path string, max int64) (*DenyLog, error) {
-	w, err := logging.OpenRotating(path, max, 0o644)
+	w, err := logging.OpenRotating(path, max, 0o600)
 	if err != nil {
 		return nil, err
 	}

@@ -87,9 +87,16 @@ func (d Deps) proxyBinary() step.Step {
 			if !existed {
 				d.record(step.Item{ID: idProxyBinary, Kind: step.KindFile, Path: dest, State: step.Created})
 			}
-			return nil
+			d.markProxyChanged()
+			return d.relabel(ctx, dest)
 		},
 		undo: d.undoFiles,
+	}
+}
+
+func (d Deps) markProxyChanged() {
+	if d.proxyChanged != nil {
+		d.proxyChanged.Store(true)
 	}
 }
 
@@ -114,7 +121,7 @@ func (d Deps) proxyCA() step.Step {
 	dir := path.Dir(c.CACertPath)
 	return hostStep{
 		id: idProxyCA, title: "Sandbox CA",
-		check: func(context.Context) (step.Status, error) {
+		check: func(ctx context.Context) (step.Status, error) {
 			b, err := d.FS.ReadFile(c.CACertPath)
 			if err != nil {
 				return fail("no " + c.CACertPath)
@@ -123,6 +130,18 @@ func (d Deps) proxyCA() step.Step {
 				return fail("no " + c.CAKeyPath)
 			}
 			if err := checkCACert(b, time.Now()); err != nil {
+				return fail(err.Error())
+			}
+			// The key stays root-only; read it to check it matches, since a
+			// mismatch would leave the proxy failing at every start.
+			res, err := d.Runner.Run(ctx, root("cat", "--", c.CAKeyPath))
+			if err != nil {
+				return step.Status{}, err
+			}
+			if res.Code != 0 {
+				return fail("cannot read " + c.CAKeyPath)
+			}
+			if _, err := proxy.LoadCA(b, res.Stdout); err != nil {
 				return fail(err.Error())
 			}
 			return pass("CA ready, limited to " + proxy.APIHost)
@@ -156,6 +175,7 @@ func (d Deps) proxyCA() step.Step {
 				return err
 			}
 			d.record(step.Item{ID: idProxyCA, Kind: step.KindFile, Path: c.CACertPath, State: step.Created})
+			d.markProxyChanged()
 			return nil
 		},
 		undo: d.undoFiles,
@@ -193,6 +213,14 @@ func (d Deps) apiKey() step.Step {
 	return hostStep{
 		id: idAPIKey, title: "API key for the proxy",
 		check: func(context.Context) (step.Status, error) {
+			// The stored key stays unreadable here, so a key the wizard
+			// supplies always gets written: re-running setup with a new key
+			// replaces the old one.
+			if d.APIKey != nil {
+				if key, err := d.APIKey(); err == nil && key != "" {
+					return fail("a new API key to store")
+				}
+			}
 			info, err := d.FS.Stat(p)
 			if err != nil {
 				return fail("no API key stored")
@@ -219,10 +247,14 @@ func (d Deps) apiKey() step.Step {
 			if err := checkAPIKey(key); err != nil {
 				return err
 			}
+			existed := d.exists(p)
 			if err := system.WriteRootFile(ctx, d.Runner, p, []byte(key+"\n"), 0o600); err != nil {
 				return err
 			}
-			d.record(step.Item{ID: idAPIKey, Kind: step.KindFile, Path: p, State: step.Created})
+			if !existed {
+				d.record(step.Item{ID: idAPIKey, Kind: step.KindFile, Path: p, State: step.Created})
+			}
+			d.markProxyChanged()
 			return nil
 		},
 		undo: d.undoFiles,
@@ -256,6 +288,9 @@ func (d Deps) proxyService() step.Step {
 	return hostStep{
 		id: idProxyService, title: "Egress proxy service",
 		check: func(ctx context.Context) (step.Status, error) {
+			if d.proxyChanged != nil && d.proxyChanged.Load() {
+				return fail("the proxy's binary, CA or key changed; " + unit + " needs a restart")
+			}
 			if !d.matches(unitFile.Path, unitFile.Content) {
 				return fail(unitFile.Path + " missing or changed")
 			}
@@ -283,10 +318,16 @@ func (d Deps) proxyService() step.Step {
 				return err
 			}
 			d.record(step.Item{ID: idProxyService, Kind: step.KindFile, Path: unitFile.Path, State: step.Created})
+			if err := d.relabel(ctx, unitFile.Path); err != nil {
+				return err
+			}
 			if err := d.runAll(ctx, cmds); err != nil {
 				return err
 			}
 			d.record(step.Item{ID: idProxyService, Kind: step.KindUnit, Name: unit, State: step.Created})
+			if d.proxyChanged != nil {
+				d.proxyChanged.Store(false)
+			}
 			return nil
 		},
 		undo: func(ctx context.Context, items []step.Item) error {
