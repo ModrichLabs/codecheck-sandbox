@@ -24,26 +24,28 @@ type Config struct {
 	JailUser  string
 	Table     string
 
-	UnitPath  string
-	RulesPath string
-	NMPath    string
-	HashPath  string // the expected rule hash, for cc-launch
+	UnitPath   string
+	RulesPath  string
+	NMPath     string
+	HashPath   string // the expected rule hash, for cc-launch
+	JailerBase string // the jailer's chroot base
 }
 
 // DefaultConfig returns the footprint from spec §3.
 func DefaultConfig() Config {
 	return Config{
-		Tap:       "cc-tap0",
-		HostIP:    "172.16.0.1",
-		GuestIP:   "172.16.0.2",
-		PrefixLen: 30,
-		ProxyPort: 3180,
-		JailUser:  "fcjail",
-		Table:     "codecheck",
-		UnitPath:  "/etc/systemd/system/codecheck-net.service",
-		RulesPath: "/etc/codecheck-sandbox/rules.nft",
-		NMPath:    "/etc/NetworkManager/conf.d/codecheck-sandbox.conf",
-		HashPath:  "/var/lib/codecheck-sandbox/rules.sha256",
+		Tap:        "cc-tap0",
+		HostIP:     "172.16.0.1",
+		GuestIP:    "172.16.0.2",
+		PrefixLen:  30,
+		ProxyPort:  3180,
+		JailUser:   "fcjail",
+		Table:      "codecheck",
+		UnitPath:   "/etc/systemd/system/codecheck-net.service",
+		RulesPath:  "/etc/codecheck-sandbox/rules.nft",
+		NMPath:     "/etc/NetworkManager/conf.d/codecheck-sandbox.conf",
+		HashPath:   "/var/lib/codecheck-sandbox/rules.sha256",
+		JailerBase: "/srv/jailer",
 	}
 }
 

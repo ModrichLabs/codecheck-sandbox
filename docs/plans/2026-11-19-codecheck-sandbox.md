@@ -13,7 +13,8 @@ _Updated 2026-11-20._
   logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
   downloads (#7) into `main`.
 - **In progress:** M6, host network, on branch `feat/host-network` in its own
-  worktree. The templates and `hostnet/rulehash.go` done; next come the steps.
+  worktree. Every M6 task done; next come the M6 review and pull request, then
+  M7 (egress proxy) on a new branch once it merges.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -567,7 +568,7 @@ of repeating them.
     layout may differ between versions, so record the expected hash from the
     live table just after loading, on the same host, never from a precomputed
     value.
-- [ ] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
+- [x] Steps, each with full `Check`, `Plan`, `Apply` and `Undo`, tested with
       `FakeRunner`:
   - `JailUserStep` (`fcjail`, recorded as created or adopted)
   - `JailerBaseStep` (`/srv/jailer`, mode 711)
@@ -578,6 +579,36 @@ of repeating them.
   - `FirewalldStep` and `UfwStep`, only when they're active: they allow 3180 on
     the tap
   - `SELinuxStep`, only when SELinux enforces
+  - _Done:_ `hostnet.Steps(Deps{Config, Runner, FS, Record})` validates the
+    config and returns eight steps (`host-*` IDs, registered with telemetry) in
+    this order: jail user, jailer base, rules, NetworkManager, tap service,
+    firewalld, ufw, SELinux. Rules load before the tap service (which loads them
+    again) and NetworkManager learns to ignore the tap before it exists. `Apply`
+    records only what it creates, through `Record`, so pre-existing users and
+    folders never get removed; M13 collects the records into the manifest.
+    Decisions:
+    - `fcjail`:
+      `useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /bin/false`;
+      no `kvm` group, since the jailer creates `/dev/kvm` inside each chroot for
+      the jail user.
+    - Rules: create `/etc/codecheck-sandbox` and `/var/lib/codecheck-sandbox`
+      (0755), write and load the rules, then record the live table's hash. Undo
+      deletes the table, the files, then empty folders.
+    - firewalld: a dedicated `codecheck` zone holding the tap
+      (`--change-interface`, which also moves it out of a zone NetworkManager
+      chose) with port 3180/tcp; undo deletes the zone.
+    - ufw: `ufw allow in on cc-tap0 to 172.16.0.1 port 3180 proto tcp`, checked
+      with `ufw show added`.
+    - SELinux: `restorecon -RF` on our paths, checked with a dry run. **Not yet
+      tried on an SELinux host; check on Fedora in M14.**
+    - Jailer base undo uses `rm -rf --one-file-system`, so it never follows a
+      bind mount a crashed run left.
+  - _Also:_ `PrivRunner` now turns each privilege tool's "password required"
+    reply into `ErrLoginExpired`, so a `Check` that needs root (the live rule
+    hash) hands over on the first run instead of failing; sudo's and run0's
+    wording checked on this host, sudo-rs's and doas's from their sources. The
+    manifest allowlist gains `firewalld zone codecheck` and
+    `ufw allow cc-tap0 3180`.
 
 ## M7. Egress proxy (`internal/proxy`)
 
