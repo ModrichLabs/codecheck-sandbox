@@ -41,6 +41,15 @@ func TestInstallCommandsGolden(t *testing.T) {
 	}
 }
 
+func TestNothingToInstallMeansNoCommands(t *testing.T) {
+	for _, f := range []Family{Arch, Debian, Fedora, OpenSUSE, Unknown} {
+		cmds, err := InstallCommands(f, nil)
+		if err != nil || len(cmds) != 0 {
+			t.Errorf("%s: InstallCommands(nil) = %v, %v; want no commands", f, cmds, err)
+		}
+	}
+}
+
 func TestUnknownFamilyListsThePackages(t *testing.T) {
 	_, err := InstallCommands(Unknown, AllPackages)
 	if !errors.Is(err, ErrUnknownFamily) {

@@ -48,6 +48,9 @@ func PackageName(f Family, p Package) (string, error) {
 // family f without prompting. Debian refreshes its package lists first, and
 // sets DEBIAN_FRONTEND through env, since root commands carry no Env.
 func InstallCommands(f Family, pkgs []Package) ([][]string, error) {
+	if len(pkgs) == 0 {
+		return nil, nil // nothing missing, nothing to run
+	}
 	names := make([]string, 0, len(pkgs))
 	for _, p := range pkgs {
 		name, err := PackageName(f, p)
@@ -70,7 +73,8 @@ func InstallCommands(f Family, pkgs []Package) ([][]string, error) {
 		}, nil
 	case Fedora:
 		return [][]string{append([]string{"dnf", "install", "-y"}, names...)}, nil
-	default: // OpenSUSE; PackageName already refused anything else
+	case OpenSUSE:
 		return [][]string{append([]string{"zypper", "--non-interactive", "install", "--no-recommends"}, names...)}, nil
 	}
+	return nil, fmt.Errorf("%s: %w", f, ErrUnknownFamily)
 }

@@ -5,10 +5,13 @@ package platform
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
@@ -28,17 +31,38 @@ type Env struct {
 	Stat      func(path string) (FileStat, error)
 	FreeBytes func(path string) (uint64, error)
 	LookPath  func(name string) (string, error)
+	// LookupGroup names a group the way NSS does, so groups from
+	// /usr/lib/group, userdb or LDAP count as well as /etc/group.
+	LookupGroup func(gid uint32) (string, error)
 }
 
 // DefaultEnv reads the real host.
 func DefaultEnv() Env {
+	run := system.ExecRunner{}
 	return Env{
-		FS:        system.OSFS{},
-		Runner:    system.ExecRunner{},
-		Arch:      runtime.GOARCH,
-		Stat:      statFile,
-		FreeBytes: freeBytes,
-		LookPath:  exec.LookPath,
+		FS:          system.OSFS{},
+		Runner:      run,
+		Arch:        runtime.GOARCH,
+		Stat:        statFile,
+		FreeBytes:   freeBytes,
+		LookPath:    exec.LookPath,
+		LookupGroup: getentGroup(run),
+	}
+}
+
+// getentGroup asks getent, which goes through NSS even in a binary built
+// without cgo (where os/user reads only /etc/group).
+func getentGroup(r system.Runner) func(uint32) (string, error) {
+	return func(gid uint32) (string, error) {
+		res, err := r.Run(context.Background(), system.Cmd{Name: "getent", Args: []string{"group", strconv.FormatUint(uint64(gid), 10)}})
+		if err != nil {
+			return "", err
+		}
+		if res.Code != 0 {
+			return "", fmt.Errorf("getent group %d: no such group", gid)
+		}
+		name, _, _ := strings.Cut(strings.TrimSpace(string(res.Stdout)), ":")
+		return name, nil
 	}
 }
 
@@ -54,14 +78,14 @@ func statFile(path string) (FileStat, error) {
 	return st, nil
 }
 
-// freeBytes reports the space an unprivileged user may still use on path's
-// filesystem.
+// freeBytes reports the free space on path's filesystem as root sees it,
+// reserved blocks included, since root writes everything under /var/lib.
 func freeBytes(path string) (uint64, error) {
 	var s syscall.Statfs_t
 	if err := syscall.Statfs(path, &s); err != nil {
 		return 0, err
 	}
-	return s.Bavail * uint64(s.Bsize), nil
+	return s.Bfree * uint64(s.Bsize), nil
 }
 
 // ctxOrBackground keeps check signatures tidy where no context arrives.

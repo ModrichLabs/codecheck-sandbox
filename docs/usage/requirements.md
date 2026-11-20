@@ -28,6 +28,10 @@ knows the package names for Arch, Debian and Ubuntu, Fedora and RHEL, and
 openSUSE. On other distributions it lists the packages and waits while you
 install them.
 
+On Arch and its derivatives, run `pacman -Syu` first if you haven't upgraded
+lately. Setup installs from the package lists you already have and never
+upgrades your whole system for you, so stale lists can make a download fail.
+
 ## Things setup works alongside
 
 - **firewalld or ufw:** setup adds one allowance for the proxy port on the

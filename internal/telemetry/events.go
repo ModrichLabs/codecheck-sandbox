@@ -102,11 +102,12 @@ func (s SecurityModule) value() any {
 	return oneOf(string(s), []string{"none", "selinux", "apparmor"})
 }
 
-// SecurityMode names the security module's mode.
+// SecurityMode names the security module's mode; "enabled" covers a module
+// whose mode the CLI cannot read without root.
 type SecurityMode string
 
 func (s SecurityMode) value() any {
-	return oneOf(string(s), []string{"enforcing", "permissive", "complain", "disabled"})
+	return oneOf(string(s), []string{"enforcing", "permissive", "complain", "enabled", "disabled"})
 }
 
 // PrivilegeTool names the privilege tool in use.

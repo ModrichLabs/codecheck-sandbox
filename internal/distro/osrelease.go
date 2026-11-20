@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io/fs"
 	"strings"
 
@@ -98,7 +97,7 @@ func ParseOSRelease(data []byte) (OSRelease, error) {
 		PrettyName: vars["PRETTY_NAME"],
 	}
 	if rel.ID == "" {
-		return OSRelease{}, fmt.Errorf("os-release: no ID")
+		rel.ID = "linux" // the default os-release(5) gives
 	}
 	return rel, nil
 }

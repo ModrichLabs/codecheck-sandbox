@@ -74,9 +74,14 @@ NOT A LINE
 	}
 }
 
-func TestParseOSReleaseNeedsAnID(t *testing.T) {
-	if _, err := ParseOSRelease([]byte("NAME=Nothing\n")); err == nil {
-		t.Error("ParseOSRelease accepted a file without ID")
+func TestParseOSReleaseDefaultsTheID(t *testing.T) {
+	// os-release(5): a missing ID means "linux".
+	rel, err := ParseOSRelease([]byte("NAME=Custom\nID_LIKE=debian\n"))
+	if err != nil {
+		t.Fatalf("ParseOSRelease: %v", err)
+	}
+	if rel.ID != "linux" || rel.Family() != Debian {
+		t.Errorf("ID = %q, family = %q; want linux, debian through ID_LIKE", rel.ID, rel.Family())
 	}
 }
 

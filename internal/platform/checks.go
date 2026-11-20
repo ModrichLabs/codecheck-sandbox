@@ -35,8 +35,9 @@ var checkIDs = []string{
 
 func init() { telemetry.RegisterStepIDs(checkIDs...) }
 
-// readOnly adapts a read-only test to step.Step: it plans nothing, and Apply
-// only explains the manual fix.
+// readOnly adapts a read-only test to step.Step. When its check fails, Plan
+// returns ErrManual with the fix-it hint, so the engine fails the step before
+// any confirm prompt, and a dry run reports the blocker.
 type readOnly struct {
 	id, title, fix string
 	run            func(ctx context.Context) (step.Status, error)
@@ -46,7 +47,7 @@ func (c readOnly) ID() string                                     { return c.id 
 func (c readOnly) Title() string                                  { return c.title }
 func (c readOnly) Phase() step.Phase                              { return step.PhasePlatform }
 func (c readOnly) Check(ctx context.Context) (step.Status, error) { return c.run(ctxOrBackground(ctx)) }
-func (c readOnly) Plan(context.Context) (step.Plan, error)        { return step.Plan{}, nil }
+func (c readOnly) Plan(ctx context.Context) (step.Plan, error)    { return step.Plan{}, c.Apply(ctx) }
 func (c readOnly) Apply(context.Context) error                    { return fmt.Errorf("%w: %s", ErrManual, c.fix) }
 func (c readOnly) Undo(context.Context, []step.Item) error        { return nil }
 
@@ -62,7 +63,7 @@ func Checks(env Env) []step.Step {
 			case "amd64":
 				return ok("x86_64")
 			case "arm64":
-				return fail("aarch64 support has been deferred; this release needs x86_64")
+				return fail("this release supports only x86_64; aarch64 support comes later")
 			}
 			return fail("unsupported architecture " + env.Arch + "; this release needs x86_64")
 		}},
@@ -149,26 +150,14 @@ func kvmCheck(env Env) (step.Status, error) {
 	if perm&0o006 == 0o006 {
 		return ok("/dev/kvm open to all users")
 	}
-	group := groupName(env.FS, st.GID)
+	group, err := env.LookupGroup(st.GID)
+	if err != nil {
+		group = strconv.FormatUint(uint64(st.GID), 10)
+	}
 	if perm&0o060 == 0o060 && group == "kvm" {
 		return ok("/dev/kvm group kvm, mode " + fmt.Sprintf("%04o", perm))
 	}
 	return fail(fmt.Sprintf("/dev/kvm has group %q and mode %04o; the jail user needs group kvm with read and write", group, perm))
-}
-
-// groupName looks gid up in /etc/group, returning its number when absent.
-func groupName(fsys system.FS, gid uint32) string {
-	data, err := fsys.ReadFile("/etc/group")
-	if err == nil {
-		sc := bufio.NewScanner(bytes.NewReader(data))
-		for sc.Scan() {
-			f := strings.Split(sc.Text(), ":")
-			if len(f) >= 3 && f[2] == strconv.FormatUint(uint64(gid), 10) {
-				return f[0]
-			}
-		}
-	}
-	return strconv.FormatUint(uint64(gid), 10)
 }
 
 func memTotalKB(fsys system.FS) (uint64, error) {
@@ -226,9 +215,29 @@ func Inspect(env Env) Report {
 			r.SecurityMode = "enforcing"
 		}
 	} else if b, err := env.FS.ReadFile("/sys/module/apparmor/parameters/enabled"); err == nil && strings.TrimSpace(string(b)) == "Y" {
-		r.SecurityModule, r.SecurityMode = "apparmor", "enforcing"
+		r.SecurityModule, r.SecurityMode = "apparmor", appArmorMode(env.FS)
 	}
 	return r
+}
+
+// appArmorMode reads the loaded profiles: enforcing when any profile
+// enforces, complain when all complain, and plain "enabled" when the list
+// stays empty or unreadable (securityfs often needs root).
+func appArmorMode(fsys system.FS) telemetry.SecurityMode {
+	data, err := fsys.ReadFile("/sys/kernel/security/apparmor/profiles")
+	if err != nil {
+		return "enabled"
+	}
+	mode := telemetry.SecurityMode("enabled")
+	for line := range strings.Lines(string(data)) {
+		switch {
+		case strings.HasSuffix(strings.TrimSpace(line), "(enforce)"):
+			return "enforcing"
+		case strings.HasSuffix(strings.TrimSpace(line), "(complain)"):
+			mode = "complain"
+		}
+	}
+	return mode
 }
 
 func ufwEnabled(fsys system.FS) bool {

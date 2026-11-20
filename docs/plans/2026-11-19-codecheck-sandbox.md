@@ -12,8 +12,9 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
   logging and telemetry (#4) into `main`.
 - **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
-  its own worktree. Every M4 task done; next come the M4 review and pull
-  request, then M5 (pins and downloads) on a new branch once it merges.
+  its own worktree. Every M4 task done and the `/code-review medium` findings
+  handled; next come the M4 pull request, then M5 (pins and downloads) on a new
+  branch once it merges.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -403,7 +404,10 @@ of repeating them.
   - _Done:_ `InstallCommands` returns a list of argvs, since Debian runs
     `apt-get update` first; it sets `DEBIAN_FRONTEND` through `env` because root
     commands carry no `Env`. Arch uses `pacman -S --needed` without `-y`, to
-    avoid a partial upgrade. An unknown family returns `ErrUnknownFamily` naming
+    avoid a partial upgrade; the review suggested `-Syu`, but setup should never
+    upgrade the whole system on its own (least of all under `--yes`), so
+    `requirements.md` asks Arch users to upgrade first instead. An empty package
+    list gives no commands. An unknown family returns `ErrUnknownFamily` naming
     every package. A test checks every installable name against the manifest's
     package allowlist. Golden files: `go test ./internal/distro -update`
     rewrites them.
@@ -429,8 +433,14 @@ of repeating them.
     write. RAM accepts 7.5 GiB `MemTotal` and up, since "8 GB" machines report
     less. Added a privilege-tool check from spec §7. `Inspect` returns the
     firewall managers and security module for host setup and telemetry; on the
-    maintainer's machine it found ufw and Docker, and every check passed.
-    Failing read-only checks return `ErrManual` with a fix-it hint.
+    maintainer's machine it found ufw and Docker, and every check passed. A
+    failing read-only check returns `ErrManual` with a fix-it hint from `Plan`,
+    so the engine fails it before any confirm prompt and a dry run reports it.
+    The KVM group resolves through `getent` (NSS, so Silverblue's
+    `/usr/lib/group`, userdb and LDAP all count). Free disk uses `Bfree`, since
+    root writes to `/var/lib`. AppArmor's mode comes from its profile list:
+    enforcing, complain, or `enabled` when unreadable (a new telemetry enum
+    value). A missing os-release `ID` defaults to `linux`.
 
 ## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
 

@@ -38,7 +38,6 @@ func healthy(t *testing.T) *fixture {
 	}
 	write("/proc/meminfo", "MemTotal:       32621644 kB\nMemFree:         1048576 kB\n")
 	write("/sys/fs/cgroup/cgroup.controllers", "cpuset cpu io memory hugetlb pids rdma misc\n")
-	write("/etc/group", "root:x:0:\nkvm:x:992:\nwheel:x:998:lucas\n")
 	_ = m.MkdirAll("/run/systemd/system", 0o755)
 	run := &system.FakeRunner{}
 	run.On("/usr/bin/sudo", "--version").Return(system.Result{Stdout: []byte("Sudo version 1.9.17p2\n")})
@@ -66,6 +65,15 @@ func (f *fixture) env() Env {
 			return FileStat{}, fs.ErrNotExist
 		},
 		FreeBytes: func(string) (uint64, error) { return f.free, nil },
+		LookupGroup: func(gid uint32) (string, error) {
+			// As NSS would answer: kvm may come from /usr/lib/group, LDAP
+			// or userdb as well as /etc/group.
+			names := map[uint32]string{0: "root", 992: "kvm", 998: "wheel"}
+			if n, ok := names[gid]; ok {
+				return n, nil
+			}
+			return "", errors.New("unknown group")
+		},
 		LookPath: func(n string) (string, error) {
 			if p, ok := f.path[n]; ok {
 				return p, nil
@@ -112,8 +120,8 @@ func TestArch(t *testing.T) {
 	f := healthy(t)
 	f.arch = "arm64"
 	st := check(t, f.env(), "platform-arch")
-	if st.OK || !strings.Contains(st.Detail, "deferred") {
-		t.Errorf("arm64: %+v, want a failure that says support is deferred", st)
+	if st.OK || !strings.Contains(st.Detail, "aarch64 support comes later") {
+		t.Errorf("arm64: %+v, want a failure that says aarch64 support comes later", st)
 	}
 	f.arch = "386"
 	if check(t, f.env(), "platform-arch").OK {
@@ -146,6 +154,38 @@ func TestKVM(t *testing.T) {
 				t.Errorf("OK = %v (%s), want %v", st.OK, st.Detail, tt.ok)
 			}
 		})
+	}
+}
+
+func TestLookupGroupThroughGetent(t *testing.T) {
+	run := &system.FakeRunner{}
+	run.On("getent", "group", "36").Return(system.Result{Stdout: []byte("kvm:x:36:qemu\n")})
+	run.On("getent", "group", "4242").Return(system.Result{Code: 2})
+	lookup := getentGroup(run)
+	if name, err := lookup(36); err != nil || name != "kvm" {
+		t.Errorf("lookup(36) = %q, %v; want kvm", name, err)
+	}
+	if _, err := lookup(4242); err == nil {
+		t.Error("lookup of an unknown gid: want an error")
+	}
+}
+
+func TestFailingReadOnlyCheckNeverAsksForConfirmation(t *testing.T) {
+	f := healthy(t)
+	delete(f.stats, "/dev/kvm")
+	kvm := find(t, f.env(), "platform-kvm")
+
+	confirmed := false
+	err := step.Run(context.Background(), []step.Step{kvm}, step.Options{
+		Confirm: func(context.Context, step.Step, step.Plan) (bool, error) { confirmed = true; return true, nil },
+	})
+	if !errors.Is(err, ErrManual) || confirmed {
+		t.Errorf("err = %v, confirmed = %v; want ErrManual without a confirm prompt", err, confirmed)
+	}
+
+	// A dry run must surface the blocker too, not report an empty plan.
+	if err := step.Run(context.Background(), []step.Step{kvm}, step.Options{DryRun: true}); !errors.Is(err, ErrManual) {
+		t.Errorf("dry run err = %v, want ErrManual", err)
 	}
 }
 
@@ -237,7 +277,8 @@ func TestInspectQuietHost(t *testing.T) {
 	_ = f.fs.MkdirAll("/sys/module/apparmor/parameters", 0o755)
 	_ = f.fs.WriteFile("/sys/module/apparmor/parameters/enabled", []byte("Y\n"), 0o644)
 	r := Inspect(f.env())
-	if r.Firewall != "ufw" || r.SecurityModule != "apparmor" || r.SecurityMode != "enforcing" {
+	// The profile list stays unreadable here, so the mode reads "enabled".
+	if r.Firewall != "ufw" || r.SecurityModule != "apparmor" || r.SecurityMode != "enabled" {
 		t.Errorf("Inspect = %+v", r)
 	}
 	f = healthy(t)
@@ -246,17 +287,42 @@ func TestInspectQuietHost(t *testing.T) {
 	}
 }
 
+func TestAppArmorModeFromProfiles(t *testing.T) {
+	tests := []struct {
+		profiles string
+		want     telemetry.SecurityMode
+	}{
+		{"/usr/bin/man (enforce)\nlsb_release (complain)\n", "enforcing"},
+		{"lsb_release (complain)\nnvidia_modprobe (complain)\n", "complain"},
+		{"", "enabled"},
+	}
+	for _, tt := range tests {
+		f := healthy(t)
+		_ = f.fs.MkdirAll("/sys/module/apparmor/parameters", 0o755)
+		_ = f.fs.WriteFile("/sys/module/apparmor/parameters/enabled", []byte("Y\n"), 0o644)
+		_ = f.fs.MkdirAll("/sys/kernel/security/apparmor", 0o755)
+		_ = f.fs.WriteFile("/sys/kernel/security/apparmor/profiles", []byte(tt.profiles), 0o444)
+		if got := Inspect(f.env()).SecurityMode; got != tt.want {
+			t.Errorf("profiles %q: mode = %q, want %q", tt.profiles, got, tt.want)
+		}
+	}
+	props, _ := telemetry.Properties(telemetry.EnvironmentProfile{SecurityMode: "enabled"})
+	if props["security_mode"] != "enabled" {
+		t.Errorf("telemetry encodes enabled as %v; add it to the enum", props["security_mode"])
+	}
+}
+
 func TestFailingReadOnlyCheckExplainsTheFix(t *testing.T) {
 	f := healthy(t)
 	f.free = gib
 	s := find(t, f.env(), "platform-disk")
-	plan, err := s.Plan(context.Background())
-	if err != nil || len(plan.Cmds) != 0 || len(plan.Files) != 0 || plan.NeedsRoot {
-		t.Errorf("Plan = %+v, %v; a read-only check plans nothing", plan, err)
+	_, err := s.Plan(context.Background())
+	if !errors.Is(err, ErrManual) || !strings.Contains(err.Error(), "fix manually") {
+		t.Errorf("Plan = %v, want ErrManual with a hint", err)
 	}
 	err = s.Apply(context.Background())
-	if !errors.Is(err, ErrManual) || !strings.Contains(err.Error(), "fix manually") {
-		t.Errorf("Apply = %v, want ErrManual with a hint", err)
+	if !errors.Is(err, ErrManual) {
+		t.Errorf("Apply = %v, want ErrManual", err)
 	}
 	if err := s.Undo(context.Background(), nil); err != nil {
 		t.Errorf("Undo = %v, want nil", err)
