@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -29,6 +31,16 @@ type Cmd struct {
 	CleanEnv bool
 	// Root asks for the command to run as root, through the privilege tool.
 	Root bool
+	// Stdout and Stderr, when set, receive the command's output as it runs,
+	// and Result then holds none of that stream. Use them for output too
+	// large to keep in memory.
+	Stdout, Stderr io.Writer
+	// Dir sets the working folder; empty keeps the caller's.
+	Dir string
+	// Chroot runs the command with this folder as its root. Name and Dir then
+	// name paths inside it. It needs CAP_SYS_CHROOT, so only the guest's init
+	// uses it.
+	Chroot string
 }
 
 // cleanEnvKeep lists what a CleanEnv command still inherits: the search path,
@@ -74,11 +86,21 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	}
 	cmd.Env = buildEnv(base, c.Env)
 	cmd.WaitDelay = waitDelay
+	cmd.Dir = c.Dir
+	if c.Chroot != "" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Chroot: c.Chroot}
+	}
 	if len(c.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
 	} // A nil Stdin makes os/exec connect /dev/null.
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if c.Stdout != nil {
+		cmd.Stdout = c.Stdout
+	}
+	if c.Stderr != nil {
+		cmd.Stderr = c.Stderr
+	}
 
 	err := cmd.Run()
 	res := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}

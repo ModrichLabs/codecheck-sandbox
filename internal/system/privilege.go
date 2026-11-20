@@ -84,6 +84,9 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	if len(c.Env) > 0 {
 		return Result{}, fmt.Errorf("%s: %s would drop Env from a root command", c.Name, p.Tool.Kind)
 	}
+	if c.Stdout != nil || c.Stderr != nil || c.Dir != "" || c.Chroot != "" {
+		return Result{}, fmt.Errorf("%s: a root command can't stream output, change folder or chroot", c.Name)
+	}
 	args := []string{"-n"}
 	if p.Tool.Kind == ToolRun0 {
 		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
