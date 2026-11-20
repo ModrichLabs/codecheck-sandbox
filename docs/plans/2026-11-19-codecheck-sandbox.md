@@ -9,12 +9,15 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
-  logging and telemetry (#4) into `main`.
-- **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
-  its own worktree. Every M4 task done and the `/code-review medium` findings
-  handled; next come the M4 pull request, then M5 (pins and downloads) on a new
-  branch once it merges.
+- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
+  logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
+- **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
+  its own worktree. Every M5 task done and the `/code-review medium` findings
+  fixed; next come the M5 pull request, then M6 (host network) on a new branch
+  once it merges.
+- **Open question for the maintainer:** the kernel pin points at Firecracker's
+  CI bucket, not a release of this repository; mirroring it means publishing a
+  GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -444,7 +447,7 @@ of repeating them.
 
 ## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
 
-- [ ] `pins/pins.go`, filled from the spike results:
+- [x] `pins/pins.go`, filled from the spike results:
   - Firecracker and jailer tarball URL and SHA-256.
   - Ubuntu squashfs URL, the `SHA256SUMS` URLs and the signing-key fingerprint.
   - Guest kernel URL (a release of this repository) and its SHA-256.
@@ -458,7 +461,18 @@ of repeating them.
   CodeCheck commit has 40 hex characters, and the integrity string starts with
   `sha512-`.
 
-- [ ] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
+  - _Done:_ every pin got checked against its source on 2026-11-20: Firecracker
+    against the release's `.sha256.txt`; the kernel by hashing the bytes the CI
+    bucket serves; Ubuntu by matching the dated `release-20261017` `SHA256SUMS`
+    to the spike's copy and verifying its signature with the key; the key by its
+    fingerprint; CodeCheck's tag with `git ls-remote`; Claude Code's integrity
+    against the npm registry. The Ubuntu pin uses the dated folder, since
+    `release/` moves to each new build. The kernel URL stays upstream for now
+    (see the open question above). Key file:
+    `assets/keys/ubuntu-cloudimage.asc`, from `keyserver.ubuntu.com`. A
+    reflection test checks every pin's format and that the pins agree.
+
+- [x] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
       `~/.cache/codecheck-sandbox/codecheck.git` (a bare repository, HTTPS only,
       `git fetch --depth 1 <url> <commit>`, with `core.hooksPath=/dev/null` and
       `protocol.file.allow=never`), check that `rev-parse FETCH_HEAD` equals the
@@ -466,23 +480,56 @@ of repeating them.
       into the build inputs. **Tests:** against a local bare repository: the
       right commit, a mismatched commit refused, a non-HTTPS URL refused (except
       `file://` in tests through an injected option).
+  - _Done:_ `CodeCheck{...}.Archive(ctx)` returns the tar bytes. Beyond the
+    plan's flags, every git call also runs with `protocol.allow=never` plus
+    `protocol.https.allow=always`, and with `GIT_CONFIG_GLOBAL=/dev/null`,
+    `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`, so a `url.insteadOf` in
+    the user's config can't redirect the fetch. Git also runs with the new
+    `system.Cmd.CleanEnv`, which passes on only `PATH`, `HOME`, proxy and CA
+    variables: `GIT_CONFIG_*` and `GIT_SSL_NO_VERIFY` (which acts even when
+    empty) never reach it. A test with real git proved an inherited
+    `GIT_CONFIG_COUNT` did redirect the fetch before that fix. The commit must
+    be exactly 40 hex characters. The happy-path test fetches by commit from a
+    real local bare repository; a `FakeRunner` covers the `FETCH_HEAD` mismatch.
 
-- [ ] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
+- [x] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
       checked and the file renamed. It reports `Progress` events, and removes
       the file on a hash mismatch.
   - **Tests:** an `httptest` TLS server covers a good hash, a bad hash, plain
     `http` refused and a partial download.
-- [ ] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
+  - _Done:_ `Downloader{Client, Progress}.Download(ctx, url, sha256, dest)`.
+    Redirects must stay on HTTPS too (GitHub releases redirect to another host);
+    a test covers a redirect to plain `http`. Progress goes to
+    `step.ReportProgress` unless injected, at most once per MiB. Any failure
+    (hash, HTTP status, a short body) removes the temporary file and leaves
+    `dest` untouched. Requests ask for `Accept-Encoding: identity`, so a
+    server's `Content-Encoding: gzip` can't change the bytes that get hashed;
+    `MaxBytes` (default 4 GiB) caps each download.
+- [x] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
       embedded Ubuntu key in `assets/keys/ubuntu-cloudimage.asc`, then look up
       the squashfs line.
   - **Tests:** a test key signs fixtures; check good, tampered and wrong-key
     cases.
-- [ ] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
+  - _Done:_ `ProtonMail/go-crypto` v1.5.2 (2026-09-25). The key loads through a
+    root `assets` package (`go:embed` can't reach parent folders). `VerifySums`
+    needs exactly one key whose fingerprint equals the pin. `VerifiedUbuntuSum`
+    also requires the signed hash to equal the pinned one. Ubuntu's real
+    `SHA256SUMS` and signature for the pinned release sit in
+    `internal/fetch/testdata/ubuntu/`; that test found Ubuntu armours its `.gpg`
+    signature, so both armoured and binary signatures verify.
+- [x] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
       integrity, extract only `package/claude` (refusing links, absolute paths
       and `..`), cap the size, and check the binary's SHA-256. Never runs npm,
       Node or package scripts.
   - **Tests:** a fixture tarball covers a good file, a bad integrity, a bad
     binary hash, a path-traversal entry and a symlink entry.
+  - _Done:_ `ClaudeCodeBinary(d, workDir).Fetch(ctx, dest)`, built on
+    `NpmBinary` and a new `Downloader.DownloadSRI` (the download core now takes
+    any hash and check). Any unsafe entry, or the member appearing twice or not
+    at all, refuses the whole tarball; only files and folders count as safe. Cap
+    512 MiB. A one-off smoke test (since removed) fetched the real Firecracker
+    release and the real Claude Code tarball through this code: both verified,
+    and the 372.9 MB binary matched its pin.
 
 ## M6. Host network (`internal/hostnet`)
 
