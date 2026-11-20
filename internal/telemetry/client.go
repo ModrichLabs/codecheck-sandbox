@@ -137,8 +137,11 @@ func (p *PostHog) Flush(ctx context.Context) {
 		p.o.Log.Warn("telemetry: reading the queue", "err", err)
 		return
 	}
+	// Clear the queue before sending, and send nothing if that fails: the
+	// next command would otherwise send the same events again.
 	if err := p.o.FS.Remove(p.queuePath()); err != nil {
-		p.o.Log.Warn("telemetry: clearing the queue", "err", err)
+		p.o.Log.Warn("telemetry: clearing the queue; sending nothing", "err", err)
+		return
 	}
 	var events []queued
 	for line := range bytes.Lines(data) {

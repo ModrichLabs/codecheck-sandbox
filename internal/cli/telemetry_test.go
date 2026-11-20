@@ -5,6 +5,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/ModrichLabs/codecheck-sandbox/internal/buildinfo"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/telemetry"
 )
@@ -67,6 +69,54 @@ func TestTheClientFactorySeesTheGlobalFlags(t *testing.T) {
 	_, seen, _ := runWith(t, "--no-telemetry", "--yes", "version")
 	if !seen.NoTelemetry || !seen.Yes {
 		t.Errorf("factory got %+v, want NoTelemetry and Yes set", seen)
+	}
+}
+
+// testTree builds root → parent → child, where child sets ran.
+func testTree(ran *bool) *cobra.Command {
+	root := &cobra.Command{Use: "root", SilenceUsage: true, SilenceErrors: true}
+	parent := &cobra.Command{Use: "telemetry"}
+	parent.AddCommand(&cobra.Command{Use: "off", RunE: func(*cobra.Command, []string) error {
+		*ran = true
+		return nil
+	}})
+	root.AddCommand(parent)
+	return root
+}
+
+func TestTheClientComesAfterTheCommandRuns(t *testing.T) {
+	// `telemetry off` must change the setting before the wrapper asks for a
+	// client, so the wrapper sees the new consent and sends nothing.
+	var ran, builtAfter bool
+	root := testTree(&ran)
+	fake := &fakeClient{}
+	withTelemetry(root, &Options{}, func(Options) telemetry.Client {
+		builtAfter = ran
+		return fake
+	})
+	root.SetArgs([]string{"telemetry", "off"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !builtAfter {
+		t.Error("the wrapper built its client before the command ran")
+	}
+}
+
+func TestNestedSubcommandsGetWrapped(t *testing.T) {
+	var ran bool
+	root := testTree(&ran)
+	fake := &fakeClient{}
+	withTelemetry(root, &Options{}, func(Options) telemetry.Client { return fake })
+	root.SetArgs([]string{"telemetry", "off"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(fake.events) != 1 || fake.flushes != 1 {
+		t.Fatalf("events = %+v, flushes = %d; want the nested command recorded", fake.events, fake.flushes)
+	}
+	if fake.events[0].(telemetry.CommandRun).Command != "telemetry" {
+		t.Errorf("command = %v, want the top-level name telemetry", fake.events[0])
 	}
 }
 

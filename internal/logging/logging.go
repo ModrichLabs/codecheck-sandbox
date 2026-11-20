@@ -169,10 +169,11 @@ func (r *rotating) Write(p []byte) (int, error) {
 	return n, err
 }
 
+// rotate shifts the files along. A rename that fails leaves the current file
+// growing past the cap rather than losing the log: rotate always reopens it,
+// and a later write tries again.
 func (r *rotating) rotate() error {
-	if err := r.f.Close(); err != nil {
-		return err
-	}
+	_ = r.f.Close()
 	for i := keepFiles - 1; i >= 1; i-- {
 		older := fmt.Sprintf("%s.%d", r.path, i)
 		newer := r.path
@@ -180,7 +181,7 @@ func (r *rotating) rotate() error {
 			newer = fmt.Sprintf("%s.%d", r.path, i-1)
 		}
 		if err := os.Rename(newer, older); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+			break
 		}
 	}
 	return r.open()

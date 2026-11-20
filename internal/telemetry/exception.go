@@ -45,7 +45,7 @@ func (f StackFrame) encode() map[string]any {
 // internal/step.(*engine).runStep.
 type Symbol string
 
-var symbolPattern = regexp.MustCompile(`^(internal|cmd)/[a-z0-9_/]+\.[A-Za-z0-9_.()*\[\]-]+$`)
+var symbolPattern = regexp.MustCompile(`^(internal|cmd)/[a-z0-9_/-]+\.[A-Za-z0-9_.()*\[\]-]+$`)
 
 func (s Symbol) value() any {
 	if symbolPattern.MatchString(string(s)) && !strings.Contains(string(s), "..") {
@@ -57,7 +57,7 @@ func (s Symbol) value() any {
 // ModuleFile holds a source file relative to the module root.
 type ModuleFile string
 
-var moduleFilePattern = regexp.MustCompile(`^(internal|cmd)(/[a-z0-9_]+)+\.go$`)
+var moduleFilePattern = regexp.MustCompile(`^(internal|cmd)(/[a-z0-9_-]+)+\.go$`)
 
 func (f ModuleFile) value() any {
 	if moduleFilePattern.MatchString(string(f)) {
@@ -132,13 +132,31 @@ func KindOf(err error) ErrorKind {
 	return "unknown"
 }
 
+// stackCarrier marks an error that recorded the call stack where it arose.
+// Errors built that way give exceptions a useful stack; the reporting site's
+// own frames (a CLI wrapper, the engine's hook) would only mislead.
+type stackCarrier interface {
+	Callers() []uintptr
+}
+
 // NewException builds an exception event for err, failing in the step with
-// the given ID (empty when no step ran). The stack covers the caller's frames
-// inside the module, with paths cut to the module root.
+// the given ID (empty when no step ran). When some error in err's chain
+// carries its own stack, the event keeps that stack's frames inside the
+// module, with paths cut to the module root; otherwise it sends no stack.
 func NewException(err error, stepID string) Exception {
-	pcs := make([]uintptr, 64)
-	n := runtime.Callers(2, pcs)
-	frames := runtime.CallersFrames(pcs[:n])
+	ex := Exception{Kind: KindOf(err), Step: StepID(stepID)}
+	var sc stackCarrier
+	if errors.As(err, &sc) {
+		ex.Stack = moduleFrames(sc.Callers())
+	}
+	return ex
+}
+
+func moduleFrames(pcs []uintptr) []StackFrame {
+	if len(pcs) == 0 {
+		return nil
+	}
+	frames := runtime.CallersFrames(pcs)
 	var stack []StackFrame
 	for {
 		fr, more := frames.Next()
@@ -153,7 +171,7 @@ func NewException(err error, stepID string) Exception {
 			break
 		}
 	}
-	return Exception{Kind: KindOf(err), Step: StepID(stepID), Stack: stack}
+	return stack
 }
 
 // packageOf cuts a function name such as internal/step.(*engine).run to its

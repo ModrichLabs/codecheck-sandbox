@@ -177,6 +177,19 @@ func (v Version) value() any {
 	return invalid
 }
 
+// KernelVersion holds a kernel release; it encodes as major.minor only, so
+// the patch level and any distro suffix (6.17.9-arch1-1) stay local.
+type KernelVersion string
+
+var kernelPattern = regexp.MustCompile(`^(\d{1,3}\.\d{1,3})(\D|\.|$)`)
+
+func (k KernelVersion) value() any {
+	if m := kernelPattern.FindStringSubmatch(string(k)); m != nil {
+		return m[1]
+	}
+	return invalid
+}
+
 // --- Bands ---
 
 // DurationBand buckets a duration.
@@ -317,7 +330,7 @@ type EnvironmentProfile struct {
 	Distro             DistroFamily    `prop:"distro_family"`
 	DistroVersion      Version         `prop:"distro_version"`
 	Arch               Arch            `prop:"arch"`
-	Kernel             Version         `prop:"kernel"`
+	Kernel             KernelVersion   `prop:"kernel"`
 	RAM                SizeBand        `prop:"ram"`
 	Disk               SizeBand        `prop:"disk"`
 	Firewall           FirewallManager `prop:"firewall"`
@@ -357,12 +370,11 @@ func AllEvents() []Event {
 // Properties encodes e's fields by their prop tags. It refuses any field that
 // holds neither a bool nor one of this package's value types.
 func Properties(e Event) (map[string]any, error) {
+	// Events travel by value only: a pointer would slip past the type
+	// checks that shape some events, such as Exception.
 	v := reflect.ValueOf(e)
-	if v.Kind() == reflect.Pointer {
-		v = v.Elem()
-	}
 	if v.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("telemetry: event %T: want a struct", e)
+		return nil, fmt.Errorf("telemetry: event %T: want a struct value", e)
 	}
 	t := v.Type()
 	out := make(map[string]any, t.NumField())

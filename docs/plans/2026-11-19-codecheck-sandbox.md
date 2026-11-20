@@ -12,8 +12,9 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. Every M3a task done; next come
-  the M3a review and pull request, then M4 (platform and distro). Pins:
+  `feat/logging-telemetry` in its own worktree. Every M3a task done and the
+  `/code-review medium` findings handled; next come the M3a pull request, then
+  M4 (platform and distro) on a new branch once it merges. Pins:
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
   least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -327,7 +328,13 @@ of repeating them.
     `unknown`. File paths come from the function's package plus the file's base
     name, never the build path. Frame fields have their own validating types,
     and the allowlist test covers them. Later milestones that add sentinels
-    should add them to `kindRules`.
+    should add them to `kindRules`. **Stacks** come only from an error in the
+    chain with a `Callers() []uintptr` method (recorded where it arose); without
+    one, the exception sends no stack, since the reporting site's frames would
+    mislead. A later milestone may add such an error type in a small package
+    that `cc-launch` can import too. Package paths may contain `-`
+    (`cmd/codecheck-sandbox`). `EnvironmentProfile.Kernel` uses `KernelVersion`,
+    which sends major.minor only.
 - [x] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
       `--no-telemetry`, `--yes`, TTY and `config.toml`; create or delete the
       install id. **Tests:** a table of every combination.
@@ -352,7 +359,10 @@ of repeating them.
     HTTP transport (`stripTransport`) filters every batch against the property
     allowlist as the last step before the network. It refuses anything other
     than a POST to `/batch/`, and any body it cannot decode. No `SecretKey` (no
-    flag polling), no retries, GeoIP off.
+    flag polling), no retries, GeoIP off. If the queue can't be deleted, `Flush`
+    sends nothing. **Accepted risk:** the queue has no lock, so two CLI commands
+    running at once for one user could lose an event; the proxy runs as a
+    separate `DynamicUser` and never shares this queue.
 - [x] Hook points: the engine emits `step_finished` through an injected client
       (M3 tests use `Noop`); `cli` wraps every command for `command_run` and a
       final `Flush`. `cc-launch` never imports `internal/telemetry`; an import

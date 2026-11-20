@@ -115,6 +115,26 @@ func TestRotationKeepsFiveFiles(t *testing.T) {
 	}
 }
 
+func TestLoggingSurvivesAFailedRotation(t *testing.T) {
+	dir := t.TempDir()
+	// A folder named like the first rotated file makes every rotation fail.
+	if err := os.MkdirAll(filepath.Join(dir, FileName+".1", "blocker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	log, closer, err := New(Options{Dir: dir, Redactor: &system.Redactor{}, MaxSize: 256})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for i := range 20 {
+		log.Info("line", "i", i, "pad", strings.Repeat("y", 100))
+	}
+	_ = closer.Close()
+	cur, _ := os.ReadFile(filepath.Join(dir, FileName))
+	if !strings.Contains(string(cur), `"i":19`) {
+		t.Errorf("logging stopped after a failed rotation; current file:\n%s", cur)
+	}
+}
+
 func TestNewCreatesAPrivateFolder(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state", "log")
 	_, closer, err := New(Options{Dir: dir, Redactor: &system.Redactor{}})

@@ -144,6 +144,27 @@ func TestVersionRejectsSmuggledText(t *testing.T) {
 	}
 }
 
+func TestKernelVersionKeepsMajorMinorOnly(t *testing.T) {
+	tests := map[string]any{
+		"6.12.3":         "6.12",
+		"6.17.9-arch1-1": "6.17",
+		"5.15":           "5.15",
+		"alice":          "invalid",
+		"10.20.30.40":    "10.20",
+	}
+	for in, want := range tests {
+		if got := KernelVersion(in).value(); got != want {
+			t.Errorf("KernelVersion(%q) encodes as %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestPropertiesRefusesPointerEvents(t *testing.T) {
+	if _, err := Properties(&Exception{Kind: "canceled"}); err == nil {
+		t.Error("Properties accepted a *Exception, which would skip the exception format")
+	}
+}
+
 func TestStepIDRejectsFreeText(t *testing.T) {
 	RegisterStepIDs("nft-rules")
 	for _, s := range []string{"/etc/passwd", "Hello World", "sk-ant-api03-abc", "a.b", ""} {

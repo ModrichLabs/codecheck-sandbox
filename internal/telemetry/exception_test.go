@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -54,8 +55,37 @@ func TestExceptionKinds(t *testing.T) {
 	}
 }
 
+// stackErr carries the call stack from where it arose.
+type stackErr struct{ pcs []uintptr }
+
+func (e stackErr) Error() string      { return "boom at /home/alice" }
+func (e stackErr) Callers() []uintptr { return e.pcs }
+
+func newStackErr() error {
+	pcs := make([]uintptr, 32)
+	return stackErr{pcs: pcs[:runtime.Callers(1, pcs)]}
+}
+
+func TestExceptionWithoutAnErrorStackSendsNone(t *testing.T) {
+	// The reporting site's own frames would only mislead.
+	if ex := NewException(errors.New("x"), ""); len(ex.Stack) != 0 {
+		t.Errorf("stack = %+v, want none for an error without frames", ex.Stack)
+	}
+}
+
+func TestMainPackageFramesSurvive(t *testing.T) {
+	for _, s := range []string{"cmd/codecheck-sandbox.main", "cmd/cc-launch.run"} {
+		if Symbol(s).value() != s {
+			t.Errorf("Symbol(%q) encodes as %v", s, Symbol(s).value())
+		}
+	}
+	if f := "cmd/codecheck-sandbox/main.go"; ModuleFile(f).value() != f {
+		t.Errorf("ModuleFile(%q) encodes as %v", f, ModuleFile(f).value())
+	}
+}
+
 func TestExceptionStackStaysInsideTheModule(t *testing.T) {
-	ex := NewException(errors.New("x"), "")
+	ex := NewException(fmt.Errorf("wrapped: %w", newStackErr()), "")
 	if len(ex.Stack) == 0 {
 		t.Fatal("no stack frames")
 	}
@@ -68,8 +98,8 @@ func TestExceptionStackStaysInsideTheModule(t *testing.T) {
 			t.Errorf("frame %q / %q fails its own validation", fn, file)
 		}
 	}
-	if string(ex.Stack[0].File) != "internal/telemetry/exception_test.go" {
-		t.Errorf("first frame file = %q, want this test file", ex.Stack[0].File)
+	if string(ex.Stack[0].File) != "internal/telemetry/exception_test.go" || string(ex.Stack[0].Function) != "internal/telemetry.newStackErr" {
+		t.Errorf("first frame = %+v, want newStackErr, where the error arose", ex.Stack[0])
 	}
 }
 

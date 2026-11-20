@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -218,6 +219,22 @@ func TestTransportFailsClosedOnAnUnreadableBody(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// stuckQueueFS refuses to delete anything.
+type stuckQueueFS struct{ *system.MemFS }
+
+func (stuckQueueFS) Remove(string) error { return fs.ErrPermission }
+
+func TestFlushSendsNothingWhenItCannotClearTheQueue(t *testing.T) {
+	srv, got := fakePostHog(t, http.StatusOK)
+	fsys := stuckQueueFS{system.NewMemFS()}
+	c := New(Options{Key: "phc_testkeytestkeytestkeytestkey", Host: srv.URL, Dir: "/q", FS: fsys, InstallID: testID})
+	c.Capture(CommandRun{Command: "doctor", Outcome: OutcomeOK})
+	c.Flush(context.Background())
+	if n := len(got.events(t)); n != 0 {
+		t.Errorf("sent %d events with the queue stuck in place; the next run would send them again", n)
+	}
+}
 
 func TestEmptyKeyFallsBackToNoop(t *testing.T) {
 	c := New(Options{Key: "", Host: "https://us.i.posthog.com", Dir: "/x", FS: system.NewMemFS(), InstallID: testID})
