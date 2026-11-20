@@ -2,7 +2,7 @@
 
 ## Where we are (resume here)
 
-_Updated 2026-11-20._
+_Updated 2026-11-21._
 
 - **Done:** M0 (spikes S1–S5 and the gate; all spec amendments approved) and M1
   (scaffold, command tree, licence, community files, documentation skeleton).
@@ -11,11 +11,11 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
-  (#7) and M6 host network (#9) into `main`.
-- **In progress:** M7, egress proxy, on branch `feat/egress-proxy` in its own
-  worktree. Every M7 task done and the `/code-review medium` findings handled;
-  next come the M7 pull request, then M8 (guest init and assets) on a new branch
-  once it merges.
+  (#7), M6 host network (#9) and M7 egress proxy (#10) into `main`.
+- **In progress:** M8, guest init and assets, on branch `feat/guest-init` in its
+  own worktree; the next unticked M8 task comes next. The maintainer chose
+  (2026-11-21) to have the host precompute diff-mode changes, so Claude gets no
+  Bash at all (spec amendment 9, recorded with the `cc-claude` task).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -715,10 +715,17 @@ of repeating them.
 
 ## M8. Guest init and assets (`cmd/cc-guestinit`, `internal/guestinit`, `assets/guest/`)
 
-- [ ] `internal/guestinit/config.go`: parse the fixed 4 KB key=value block from
+- [x] `internal/guestinit/config.go`: parse the fixed 4 KB key=value block from
       the raw config device (mode `build`, `review` or `selftest`, plus run
       settings). **Tests:** valid blocks, unknown keys, oversize values, missing
       mode.
+  - _Done:_ keys `mode`, `run_id`, `max_budget_usd`, `scope` (`full` or `diff`),
+    `base` (a full 40- or 64-hex commit, diff only) and `probe_ports` (selftest
+    only). The parser fails closed: exactly 4096 bytes, every line
+    newline-terminated, nothing but NULs after the text, values of 128 bytes at
+    most, no repeated or unknown keys, and no key outside its mode. `Encode`
+    writes the same block for the host. **For M9/M11:** build the config device
+    with `guestinit.Encode`.
 - [ ] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
       over writable paths, code disk read-only at `/work`, output disk at
       `/out`), `eth0` at 172.16.0.2 with no default route and IPv6 off, then
