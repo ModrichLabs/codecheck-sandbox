@@ -821,9 +821,21 @@ of repeating them.
     from `/out/stream.jsonl` (text, despite the name), report failed probe ids
     to telemetry, and fill `probe_ports` from Docker's published ports when
     Docker runs.
-- [ ] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
+- [x] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
       The build VM has no `network-interfaces` entry; the boot arguments never
       repeat `pci=off` or `virtio_mmio` (spike S2).
+  - _Done:_ rendered by `guestinit.RenderVM`, beside the drive constants, so the
+    host and the guest share one drive order. Golden files for the review,
+    selftest and build VMs under `internal/guestinit/testdata/golden/`
+    (`-update` rewrites them). Review and selftest VMs boot the image with
+    `rootfstype=ext4 init=/usr/local/sbin/cc-guestinit` and get `eth0` on the
+    tap; the build VM boots the initramfs with no root device and no network.
+    Every config carries `console=ttyS0 reboot=k panic=1 quiet`. `RenderVM`
+    refuses disks, an initrd or a tap the mode doesn't take, paths other than
+    plain names inside the jail, 1–8 vCPUs and 256–16384 MiB only. **For
+    M9/M10:** stage the files under those names in the jail and pass the
+    rendered file to `--config-file`; check it against the real Firecracker
+    there.
 - [ ] `assets_test.go`: when `shellcheck` exists, run it on every script;
       otherwise skip with a message. Also check that `cc-claude` carries
       `--restricted`, `--strict-mcp-config` and the exact `--tools` list, and
