@@ -89,7 +89,34 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
 	}
 	args = append(append(args, "--", c.Name), c.Args...)
-	return p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
+	res, err := p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
+	if err == nil && res.Code != 0 && needsLogin(res.Stderr) {
+		return res, fmt.Errorf("%s: %w: %s", c.Name, ErrLoginExpired, strings.TrimSpace(string(res.Stderr)))
+	}
+	return res, err
+}
+
+// loginReplies match what each privilege tool prints when -n meets a missing
+// login: sudo and run0 checked on a real host, sudo-rs and doas from their
+// sources.
+var loginReplies = []string{
+	"a password is required",              // sudo
+	"authentication is required",          // sudo-rs
+	"authentication required",             // doas
+	"requires interactive authentication", // run0 (polkit)
+	"authorization required",              // doas variants
+}
+
+// needsLogin reports whether stderr says the tool wanted a password, which
+// the engine treats like an expired login and answers with a handover.
+func needsLogin(stderr []byte) bool {
+	s := strings.ToLower(string(stderr))
+	for _, r := range loginReplies {
+		if strings.Contains(s, r) {
+			return true
+		}
+	}
+	return false
 }
 
 // WriteRootFile writes data to a root-owned file at path with the given mode.

@@ -108,6 +108,31 @@ func TestPrivRunnerArgvPerTool(t *testing.T) {
 	}
 }
 
+func TestPrivRunnerReportsAMissingLoginAsExpired(t *testing.T) {
+	replies := map[ToolKind]string{
+		ToolSudo:   "sudo: a password is required\n",
+		ToolSudoRS: "sudo-rs: interactive authentication is required\n",
+		ToolDoas:   "doas: Authentication required\n",
+		ToolRun0:   "Failed to start transient service unit: Access denied as the requested operation requires interactive authentication.\n",
+	}
+	for kind, stderr := range replies {
+		f := &FakeRunner{}
+		f.On("/bin/" + string(kind)).Return(Result{Code: 1, Stderr: []byte(stderr)})
+		p := PrivRunner{Inner: f, Tool: Tool{Kind: kind, Path: "/bin/" + string(kind)}}
+		_, err := p.Run(context.Background(), Cmd{Name: "nft", Args: []string{"list", "ruleset"}, Root: true})
+		if !errors.Is(err, ErrLoginExpired) {
+			t.Errorf("%s: err = %v, want ErrLoginExpired so the engine hands over", kind, err)
+		}
+	}
+	// A root command's own failure stays a plain non-zero exit.
+	f := &FakeRunner{}
+	f.On("/bin/sudo").Return(Result{Code: 1, Stderr: []byte("Error: No such file or directory\n")})
+	res, err := (PrivRunner{Inner: f, Tool: Tool{Kind: ToolSudo, Path: "/bin/sudo"}}).Run(context.Background(), Cmd{Name: "nft", Root: true})
+	if err != nil || res.Code != 1 {
+		t.Errorf("Run = %+v, %v; want the command's own exit 1", res, err)
+	}
+}
+
 func TestPrivRunnerPassesUserCommandsThrough(t *testing.T) {
 	f := &FakeRunner{}
 	f.On("ip").Return(Result{})
