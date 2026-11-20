@@ -802,10 +802,25 @@ of repeating them.
     argument vector and environment, plus a text check for `--restricted`,
     `--strict-mcp-config`, the exact `--tools` list, and no `--bare` or `Bash`;
     disabling the budget check failed two of them.
-- [ ] `cc-selftest`: the eight original probes, plus other host ports, IPv6
+- [x] `cc-selftest`: the eight original probes, plus other host ports, IPv6
       link-local, a Docker-published port when present, DNS, and a spoofed
       source address using `ip addr add` (which the probe should not manage to
       do as `agent`).
+  - _Done:_ `assets/guest/cc-selftest`, in bash, using `/dev/tcp` (the image has
+    no `nc`). The eight originals, from the safe-deployment plan's selftest:
+    `no-direct-internet`, `no-host-ssh`, `no-dns`, `proxy-blocks-github`,
+    `work-read-only`, `root-read-only`, `config-hidden` and
+    `proxy-allows-anthropic` (the one that must succeed). The extensions:
+    `host-port-N` over common service ports, Docker's API and the ports in
+    `CC_PROBE_PORTS` (never the proxy's), `docker-bridge-N` on 172.17.0.1,
+    `no-ipv6` (no address on `eth0`, link-local included), `no-default-route`,
+    `no-spoofed-source` and `no-sudo`. Output: `PASS|FAIL <id> <what>` lines,
+    then `SUMMARY n passed, m failed`, exit 1 on any failure. Tests source the
+    script (which then runs nothing) to check the verdict logic and the port
+    list, which refuses anything but numbers. **For M11/M13:** parse those lines
+    from `/out/stream.jsonl` (text, despite the name), report failed probe ids
+    to telemetry, and fill `probe_ports` from Docker's published ports when
+    Docker runs.
 - [ ] `assets/guest/vm.json.tmpl` for review and build VMs, with a golden test.
       The build VM has no `network-interfaces` entry; the boot arguments never
       repeat `pci=off` or `virtio_mmio` (spike S2).
