@@ -18,8 +18,11 @@ type fakeStep struct {
 	root     bool
 	checks   []bool
 	applyErr []error // successive Apply results; nil once used up
+	checkErr []error // successive Check errors, ahead of checks; nil once used up
 	log      *[]string
 	progress bool // Apply reports progress
+	undone   []Item
+	undoErr  []error // successive Undo results
 }
 
 func (s *fakeStep) ID() string    { return s.id }
@@ -28,6 +31,13 @@ func (s *fakeStep) Phase() Phase  { return PhaseHost }
 
 func (s *fakeStep) Check(context.Context) (Status, error) {
 	*s.log = append(*s.log, s.id+".check")
+	if len(s.checkErr) > 0 {
+		err := s.checkErr[0]
+		s.checkErr = s.checkErr[1:]
+		if err != nil {
+			return Status{}, err
+		}
+	}
 	ok := s.checks[0]
 	if len(s.checks) > 1 {
 		s.checks = s.checks[1:]
@@ -53,9 +63,15 @@ func (s *fakeStep) Apply(ctx context.Context) error {
 	return err
 }
 
-func (s *fakeStep) Undo(context.Context) error {
+func (s *fakeStep) Undo(_ context.Context, items []Item) error {
 	*s.log = append(*s.log, s.id+".undo")
-	return nil
+	s.undone = append(s.undone, items...)
+	if len(s.undoErr) == 0 {
+		return nil
+	}
+	err := s.undoErr[0]
+	s.undoErr = s.undoErr[1:]
+	return err
 }
 
 // harness collects events and the call log for one engine run.
@@ -255,6 +271,21 @@ func TestRunReElevatesWhenTheLoginExpires(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	want := []string{"r.check", "r.plan", "elevate", "r.apply", "elevate", "r.apply", "r.check"}
+	if !reflect.DeepEqual(h.log, want) {
+		t.Errorf("log = %v, want %v", h.log, want)
+	}
+}
+
+func TestRunReElevatesWhenTheLoginExpiresDuringCheck(t *testing.T) {
+	h := &harness{}
+	s := h.step("r", true, false, true)
+	// The first check passes through; the re-check after Apply finds the
+	// login gone, so the engine hands over and checks once more.
+	s.checkErr = []error{nil, fmt.Errorf("stat: %w", system.ErrLoginExpired)}
+	if err := h.run(t, []Step{s}, Options{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want := []string{"r.check", "r.plan", "elevate", "r.apply", "r.check", "elevate", "r.check"}
 	if !reflect.DeepEqual(h.log, want) {
 		t.Errorf("log = %v, want %v", h.log, want)
 	}

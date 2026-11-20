@@ -96,7 +96,7 @@ func (e *engine) emit(ctx context.Context, ev Event) {
 
 func (e *engine) runStep(ctx context.Context, s Step) error {
 	base := Event{StepID: s.ID(), Title: s.Title()}
-	at := func(k EventKind) Event { ev := base; ev.Kind = k; return ev }
+	at := func(k EventKind) Event { return with(base, k) }
 	fail := func(err error) error {
 		ev := at(StepFailed)
 		ev.Err = err
@@ -104,8 +104,17 @@ func (e *engine) runStep(ctx context.Context, s Step) error {
 		return err
 	}
 
+	check := func() (Status, error) {
+		var st Status
+		err := e.withLogin(ctx, base, func() (err error) {
+			st, err = s.Check(ctx)
+			return err
+		})
+		return st, err
+	}
+
 	e.emit(ctx, at(StepStarted))
-	st, err := s.Check(ctx)
+	st, err := check()
 	if err != nil {
 		return fail(err)
 	}
@@ -143,20 +152,12 @@ func (e *engine) runStep(ctx context.Context, s Step) error {
 			return fail(err)
 		}
 	}
-	err = s.Apply(withProgress(ctx, e, base))
-	if plan.NeedsRoot && errors.Is(err, system.ErrLoginExpired) {
-		// The login lapsed despite the keep-alive: hand over again, then
-		// retry once. Steps check before they act, so a retry stays safe.
-		if err := e.elevate(ctx, base); err != nil {
-			return fail(err)
-		}
-		err = s.Apply(withProgress(ctx, e, base))
-	}
+	err = e.withLogin(ctx, base, func() error { return s.Apply(withProgress(ctx, e, base)) })
 	if err != nil {
 		return fail(err)
 	}
 
-	st, err = s.Check(ctx)
+	st, err = check()
 	if err != nil {
 		return fail(err)
 	}
@@ -167,6 +168,20 @@ func (e *engine) runStep(ctx context.Context, s Step) error {
 	done.Status = st
 	e.emit(ctx, done)
 	return nil
+}
+
+// withLogin runs fn and, when it fails because the privilege login lapsed
+// despite the keep-alive, hands over again and retries once. Steps check
+// before they act, so a retry stays safe.
+func (e *engine) withLogin(ctx context.Context, base Event, fn func() error) error {
+	err := fn()
+	if !errors.Is(err, system.ErrLoginExpired) {
+		return err
+	}
+	if err := e.elevate(ctx, base); err != nil {
+		return err
+	}
+	return fn()
 }
 
 func (e *engine) elevate(ctx context.Context, base Event) error {

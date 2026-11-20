@@ -11,8 +11,9 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
 - **In progress:** M3, the step engine (`internal/step`), on branch
-  `feat/step-engine` in its own worktree. Every M3 task done; next comes the M3
-  review and pull request, then M3a (logging and telemetry).
+  `feat/step-engine` in its own worktree. Every M3 task done, and the
+  `/code-review medium` findings fixed; next comes the M3 pull request, then M3a
+  (logging and telemetry) on a new branch once it merges.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -252,8 +253,12 @@ of repeating them.
   - `Uninstall(ctx, steps, manifest)` runs `Undo` in reverse, only for steps the
     manifest lists as `created`.
   - **Tests:** order, and the skipping of `adopted` and missing entries.
-  - _Done:_ a step with any created item gets undone; a failed `Undo` doesn't
-    stop the rest, and `Uninstall` returns every failure joined.
+  - _Done:_ `Uninstall(ctx, steps, manifest, Options)`. `Step.Undo(ctx, items)`
+    receives only the step's created items, so a step that adopted some packages
+    and created others removes only the latter. It elevates once before the
+    first `Undo` and again on `system.ErrLoginExpired`; a dry run changes
+    nothing. A failed `Undo` doesn't stop the rest, and `Uninstall` returns
+    every failure joined. A nil manifest gives `ErrNoManifest`.
 - [x] `manifest.go`:
   - Schema
     `{version:1, installedBy, items:[{id, kind, path, state:created|adopted}]}`.
@@ -265,13 +270,19 @@ of repeating them.
   - _Done:_ items gain an optional `name` (for users, packages, units and
     network items, which have no path); file and folder items need an allowed
     path, others may not carry one. Paths must be absolute and already clean.
-    Unknown fields, kinds and states get refused.
+    Names must come from a code-defined list (`allowedNames`: the jail user, the
+    units, `cc-tap0`, `inet codecheck`, and spec §3's packages under each distro
+    family's name; M6 must keep the package list in step). Unknown fields,
+    kinds, states and trailing data get refused. `Save` fills
+    `manifest.json.new` and renames it over the manifest with `mv -f -T`.
 - [x] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
       **Test:** two lockers in one process, where the second gets `ErrBusy`.
-  - _Done:_ `Lock(path, timeout)` polls a non-blocking `flock` and opens the
-    file read-only, so a user can lock a root-owned 0644 file. **Later:**
-    something must create `/run/codecheck-sandbox/` (mode 1777 or group-owned)
-    at boot, for example a `tmpfiles.d` entry from the host-setup steps (M9).
+  - _Done:_ `Lock(ctx, path, timeout)` polls a non-blocking `flock`, stops when
+    `ctx` ends, and opens the file read-only without ever creating it. **Later
+    (M9):** a `tmpfiles.d` entry must create `/run/codecheck-sandbox/`
+    (root, 0755) and the `lock` file in it (root, 0644) at boot. A file the user
+    created would stop root's `cc-launch` from opening it under
+    `fs.protected_regular`.
 
 ## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
 

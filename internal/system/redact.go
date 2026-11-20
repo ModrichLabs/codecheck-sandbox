@@ -110,7 +110,7 @@ func (rw *redactingWriter) Write(p []byte) (int, error) {
 	buf := rw.r.Redact(append(bytes.Clone(rw.pending), p...))
 	keep := rw.r.partialSuffix(buf)
 	if _, err := rw.w.Write(buf[:len(buf)-keep]); err != nil {
-		return 0, err // pending stays as it was, so a retry of p starts clean
+		return 0, err // pending keeps its earlier bytes, so a retry of p starts clean
 	}
 	rw.pending = bytes.Clone(buf[len(buf)-keep:])
 	return len(p), nil

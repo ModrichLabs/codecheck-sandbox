@@ -33,7 +33,10 @@ type Step interface {
 	// and --dry-run.
 	Plan(ctx context.Context) (Plan, error)
 	Apply(ctx context.Context) error
-	Undo(ctx context.Context) error
+	// Undo removes exactly the given items: the ones the manifest records as
+	// created by this step. It must leave everything else alone, including
+	// items the same step adopted.
+	Undo(ctx context.Context, items []Item) error
 }
 
 // Status holds a Check result. Detail explains it in a line for doctor.

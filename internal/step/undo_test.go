@@ -3,75 +3,129 @@ package step
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
 
-// undoStep fails its Undo when err is set.
-type undoStep struct {
-	fakeStep
-	err error
+func undoManifest(items ...Item) *Manifest {
+	return &Manifest{Version: ManifestVersion, Items: items}
 }
 
-func (s *undoStep) Undo(ctx context.Context) error {
-	_ = s.fakeStep.Undo(ctx)
-	return s.err
+func uninstall(t *testing.T, h *harness, steps []Step, m *Manifest, opts Options) error {
+	t.Helper()
+	if opts.Elevate == nil {
+		opts.Elevate = func(context.Context) error {
+			h.log = append(h.log, "elevate")
+			return nil
+		}
+	}
+	return Uninstall(context.Background(), steps, m, opts)
 }
 
 func TestUninstallUndoesCreatedStepsInReverse(t *testing.T) {
-	var log []string
-	mk := func(id string) *undoStep { return &undoStep{fakeStep: fakeStep{id: id, log: &log}} }
-	steps := []Step{mk("user"), mk("packages"), mk("rules"), mk("proxy"), mk("forgotten")}
-	m := &Manifest{Version: ManifestVersion, Items: []Item{
-		{ID: "user", Kind: KindUser, Name: "fcjail", State: Created},
-		{ID: "packages", Kind: KindPackage, Name: "nftables", State: Adopted},
-		{ID: "rules", Kind: KindFile, Path: "/etc/codecheck-sandbox/rules.nft", State: Created},
-		{ID: "proxy", Kind: KindUnit, Name: "codecheck-proxy.service", State: Created},
-		{ID: "stale", Kind: KindUnit, Name: "old.service", State: Created}, // no such step
-	}}
-
-	if err := Uninstall(context.Background(), steps, m); err != nil {
+	h := &harness{}
+	steps := []Step{h.step("user", true), h.step("packages", true), h.step("rules", true), h.step("proxy", true), h.step("forgotten", true)}
+	m := undoManifest(
+		Item{ID: "user", Kind: KindUser, Name: "fcjail", State: Created},
+		Item{ID: "packages", Kind: KindPackage, Name: "nftables", State: Adopted},
+		Item{ID: "rules", Kind: KindFile, Path: "/etc/codecheck-sandbox/rules.nft", State: Created},
+		Item{ID: "proxy", Kind: KindUnit, Name: "codecheck-proxy.service", State: Created},
+		Item{ID: "stale", Kind: KindUnit, Name: "codecheck-net.service", State: Created}, // no such step
+	)
+	if err := uninstall(t, h, steps, m, Options{}); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
-	want := []string{"proxy.undo", "rules.undo", "user.undo"}
-	if !reflect.DeepEqual(log, want) {
-		t.Errorf("log = %v, want %v", log, want)
+	want := []string{"elevate", "proxy.undo", "rules.undo", "user.undo"}
+	if !reflect.DeepEqual(h.log, want) {
+		t.Errorf("log = %v, want %v", h.log, want)
 	}
 }
 
-func TestUninstallUndoesAStepWithAnyCreatedItem(t *testing.T) {
-	var log []string
-	s := &undoStep{fakeStep: fakeStep{id: "packages", log: &log}}
-	m := &Manifest{Version: ManifestVersion, Items: []Item{
-		{ID: "packages", Kind: KindPackage, Name: "nftables", State: Adopted},
-		{ID: "packages", Kind: KindPackage, Name: "squashfs-tools", State: Created},
-	}}
-	if err := Uninstall(context.Background(), []Step{s}, m); err != nil {
+func TestUninstallPassesOnlyCreatedItems(t *testing.T) {
+	h := &harness{}
+	s := h.step("packages", true)
+	m := undoManifest(
+		Item{ID: "packages", Kind: KindPackage, Name: "nftables", State: Adopted},
+		Item{ID: "packages", Kind: KindPackage, Name: "squashfs-tools", State: Created},
+	)
+	if err := uninstall(t, h, []Step{s}, m, Options{}); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
-	if !reflect.DeepEqual(log, []string{"packages.undo"}) {
-		t.Errorf("log = %v, want [packages.undo]", log)
+	want := []Item{{ID: "packages", Kind: KindPackage, Name: "squashfs-tools", State: Created}}
+	if !reflect.DeepEqual(s.undone, want) {
+		t.Errorf("Undo got %+v, want only the created item %+v", s.undone, want)
 	}
 }
 
 func TestUninstallKeepsGoingAfterAFailure(t *testing.T) {
-	var log []string
+	h := &harness{}
 	boom := errors.New("boom")
-	steps := []Step{
-		&undoStep{fakeStep: fakeStep{id: "a", log: &log}},
-		&undoStep{fakeStep: fakeStep{id: "b", log: &log}, err: boom},
-		&undoStep{fakeStep: fakeStep{id: "c", log: &log}},
-	}
-	m := &Manifest{Version: ManifestVersion, Items: []Item{
-		{ID: "a", Kind: KindUser, Name: "x", State: Created},
-		{ID: "b", Kind: KindUser, Name: "y", State: Created},
-		{ID: "c", Kind: KindUser, Name: "z", State: Created},
-	}}
-	err := Uninstall(context.Background(), steps, m)
+	a, b, c := h.step("a", true), h.step("b", true), h.step("c", true)
+	b.undoErr = []error{boom}
+	m := undoManifest(
+		Item{ID: "a", Kind: KindUser, Name: "fcjail", State: Created},
+		Item{ID: "b", Kind: KindUnit, Name: "codecheck-net.service", State: Created},
+		Item{ID: "c", Kind: KindUnit, Name: "codecheck-proxy.service", State: Created},
+	)
+	err := uninstall(t, h, []Step{a, b, c}, m, Options{})
 	if !errors.Is(err, boom) {
 		t.Errorf("err = %v, want boom", err)
 	}
-	if want := []string{"c.undo", "b.undo", "a.undo"}; !reflect.DeepEqual(log, want) {
-		t.Errorf("log = %v, want %v", log, want)
+	if want := []string{"elevate", "c.undo", "b.undo", "a.undo"}; !reflect.DeepEqual(h.log, want) {
+		t.Errorf("log = %v, want %v", h.log, want)
+	}
+}
+
+func TestUninstallReElevatesWhenTheLoginExpires(t *testing.T) {
+	h := &harness{}
+	s := h.step("user", true)
+	s.undoErr = []error{fmt.Errorf("userdel: %w", system.ErrLoginExpired)}
+	m := undoManifest(Item{ID: "user", Kind: KindUser, Name: "fcjail", State: Created})
+	if err := uninstall(t, h, []Step{s}, m, Options{}); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if want := []string{"elevate", "user.undo", "elevate", "user.undo"}; !reflect.DeepEqual(h.log, want) {
+		t.Errorf("log = %v, want %v", h.log, want)
+	}
+}
+
+func TestUninstallDryRunUndoesNothing(t *testing.T) {
+	h := &harness{}
+	m := undoManifest(Item{ID: "user", Kind: KindUser, Name: "fcjail", State: Created})
+	ch := make(chan Event, 10)
+	if err := uninstall(t, h, []Step{h.step("user", true)}, m, Options{DryRun: true, Events: ch}); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	close(ch)
+	if len(h.log) != 0 {
+		t.Errorf("dry run called %v", h.log)
+	}
+	var kinds []EventKind
+	for e := range ch {
+		kinds = append(kinds, e.Kind)
+	}
+	if want := []EventKind{StepStarted, StepPlanned}; !reflect.DeepEqual(kinds, want) {
+		t.Errorf("events = %v, want %v", kinds, want)
+	}
+}
+
+func TestUninstallWithoutAManifest(t *testing.T) {
+	h := &harness{}
+	if err := uninstall(t, h, []Step{h.step("user", true)}, nil, Options{}); !errors.Is(err, ErrNoManifest) {
+		t.Errorf("err = %v, want ErrNoManifest", err)
+	}
+}
+
+func TestUninstallWithNothingCreatedNeverElevates(t *testing.T) {
+	h := &harness{}
+	m := undoManifest(Item{ID: "packages", Kind: KindPackage, Name: "git", State: Adopted})
+	if err := uninstall(t, h, []Step{h.step("packages", true)}, m, Options{}); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if len(h.log) != 0 {
+		t.Errorf("log = %v, want nothing", h.log)
 	}
 }

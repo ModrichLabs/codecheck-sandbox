@@ -110,15 +110,23 @@ func TestManifestLoadAndSave(t *testing.T) {
 	f := &system.FakeRunner{}
 	f.On("install").Return(system.Result{})
 	f.On("dd").Return(system.Result{})
+	f.On("mv").Return(system.Result{})
 	if err := m.Save(context.Background(), f, ManifestPath); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
+	// Save fills a temporary file and renames it over the manifest, so a
+	// failure part-way leaves the old manifest whole.
+	tmp := ManifestPath + ".new"
 	calls := f.Calls()
-	if len(calls) != 2 || calls[1].Args[0] != "of="+ManifestPath || string(calls[1].Stdin) != string(want) {
+	if len(calls) != 3 || calls[1].Args[0] != "of="+tmp || string(calls[1].Stdin) != string(want) {
 		t.Fatalf("Save calls = %+v", calls)
 	}
 	if calls[0].Args[1] != "0644" {
 		t.Errorf("manifest mode = %s, want 0644", calls[0].Args[1])
+	}
+	wantMv := system.Cmd{Name: "mv", Args: []string{"-f", "-T", "--", tmp, ManifestPath}, Root: true}
+	if !reflect.DeepEqual(calls[2], wantMv) {
+		t.Errorf("rename = %+v, want %+v", calls[2], wantMv)
 	}
 
 	fsys := system.NewMemFS()
@@ -130,6 +138,59 @@ func TestManifestLoadAndSave(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, m) {
 		t.Errorf("LoadManifest = %+v, want %+v", got, m)
+	}
+}
+
+func TestManifestSaveFailureSkipsTheRename(t *testing.T) {
+	f := &system.FakeRunner{}
+	f.On("install").Return(system.Result{})
+	f.On("dd").Return(system.Result{Code: 1, Stderr: []byte("sudo: a password is required")})
+	if err := sampleManifest().Save(context.Background(), f, ManifestPath); err == nil {
+		t.Fatal("Save: want an error")
+	}
+	if n := len(f.Calls()); n != 2 {
+		t.Errorf("calls = %d, want 2 (no rename after a failed write)", n)
+	}
+}
+
+func TestManifestRefusesTrailingData(t *testing.T) {
+	data, _ := sampleManifest().Marshal()
+	for _, tail := range []string{`{"version":1}`, "garbage"} {
+		if _, err := ParseManifest(append(append([]byte{}, data...), tail...)); err == nil {
+			t.Errorf("ParseManifest accepted trailing %q", tail)
+		}
+	}
+}
+
+func TestManifestChecksNames(t *testing.T) {
+	bad := []Item{
+		{ID: "x", Kind: KindUser, Name: "root", State: Created},
+		{ID: "x", Kind: KindPackage, Name: "openssh-server", State: Created},
+		{ID: "x", Kind: KindUnit, Name: "sshd.service", State: Created},
+		{ID: "x", Kind: KindNetwork, Name: "eth0", State: Created},
+		{ID: "x", Kind: KindUser, Name: "", State: Created},
+		{ID: "x", Kind: KindFile, Path: "/etc/codecheck-sandbox/a", Name: "fcjail", State: Created},
+	}
+	for _, it := range bad {
+		m := &Manifest{Version: ManifestVersion, Items: []Item{it}}
+		data, _ := json.Marshal(m)
+		if _, err := ParseManifest(data); err == nil {
+			t.Errorf("ParseManifest accepted %+v", it)
+		}
+	}
+	good := []Item{
+		{ID: "x", Kind: KindUser, Name: "fcjail", State: Created},
+		{ID: "x", Kind: KindPackage, Name: "squashfs-tools", State: Created},
+		{ID: "x", Kind: KindPackage, Name: "iproute", State: Adopted}, // Fedora's name
+		{ID: "x", Kind: KindUnit, Name: "codecheck-proxy.service", State: Created},
+		{ID: "x", Kind: KindNetwork, Name: "cc-tap0", State: Created},
+		{ID: "x", Kind: KindNetwork, Name: "inet codecheck", State: Created},
+	}
+	for _, it := range good {
+		m := &Manifest{Version: ManifestVersion, Items: []Item{it}}
+		if _, err := m.Marshal(); err != nil {
+			t.Errorf("Marshal(%+v) = %v, want nil", it, err)
+		}
 	}
 }
 

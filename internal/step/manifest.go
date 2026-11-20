@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
@@ -23,6 +25,7 @@ var (
 	ErrNoManifest      = errors.New("no manifest")
 	ErrManifestVersion = errors.New("unsupported manifest version")
 	ErrPathNotAllowed  = errors.New("path outside the codecheck-sandbox footprint")
+	ErrNameNotAllowed  = errors.New("name outside the codecheck-sandbox footprint")
 )
 
 // ItemState records whether setup made an item or found it already there.
@@ -88,6 +91,31 @@ var (
 	}
 )
 
+// allowedNames holds every name a non-file item may carry: the jail user, the
+// systemd units, the tap device and nftables table, and the distro packages
+// from spec §3 under each family's name. The components step (M6) must keep
+// the package list in step with what it installs.
+var allowedNames = map[ItemKind][]string{
+	KindUser:    {"fcjail"},
+	KindUnit:    {"codecheck-net.service", "codecheck-proxy.service"},
+	KindNetwork: {"cc-tap0", "inet codecheck"},
+	KindPackage: {
+		"nftables", "e2fsprogs", "git",
+		"squashfs-tools", "squashfs", // openSUSE: squashfs
+		"iproute2", "iproute", // Fedora/RHEL: iproute
+		"gnupg", "gnupg2", "gpg2", // Fedora/RHEL: gnupg2; openSUSE: gpg2
+	},
+}
+
+// CheckName accepts only the names in allowedNames for kind, so a tampered
+// manifest cannot steer uninstall at other users, packages or services.
+func CheckName(kind ItemKind, name string) error {
+	if slices.Contains(allowedNames[kind], name) {
+		return nil
+	}
+	return fmt.Errorf("%s %q: %w", kind, name, ErrNameNotAllowed)
+}
+
 // CheckPath accepts only absolute, already-clean paths inside the footprint,
 // so a tampered manifest cannot steer uninstall at other files.
 func CheckPath(p string) error {
@@ -118,12 +146,18 @@ func (m *Manifest) validate() error {
 		}
 		switch it.Kind {
 		case KindFile, KindDir:
+			if it.Name != "" {
+				return fmt.Errorf("item %s: a %s item carries no name", it.ID, it.Kind)
+			}
 			if err := CheckPath(it.Path); err != nil {
 				return fmt.Errorf("item %s: %w", it.ID, err)
 			}
 		case KindUser, KindPackage, KindUnit, KindNetwork:
 			if it.Path != "" {
 				return fmt.Errorf("item %s: a %s item carries no path", it.ID, it.Kind)
+			}
+			if err := CheckName(it.Kind, it.Name); err != nil {
+				return fmt.Errorf("item %s: %w", it.ID, err)
 			}
 		default:
 			return fmt.Errorf("item %s: unknown kind %q", it.ID, it.Kind)
@@ -153,6 +187,9 @@ func ParseManifest(data []byte) (*Manifest, error) {
 	if err := dec.Decode(&m); err != nil {
 		return nil, fmt.Errorf("reading the manifest: %w", err)
 	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("reading the manifest: unexpected data after the JSON object")
+	}
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
@@ -172,12 +209,25 @@ func LoadManifest(fsys system.FS, path string) (*Manifest, error) {
 	return ParseManifest(data)
 }
 
-// Save writes the manifest as a root-owned, world-readable file. r must
-// handle Root commands.
+// Save writes the manifest as a root-owned, world-readable file. It fills
+// path+".new" first and renames that over path, so a failure part-way (an
+// expired login, Ctrl-C) leaves the previous manifest whole. r must handle
+// Root commands.
 func (m *Manifest) Save(ctx context.Context, r system.Runner, path string) error {
 	data, err := m.Marshal()
 	if err != nil {
 		return err
 	}
-	return system.WriteRootFile(ctx, r, path, data, 0o644)
+	tmp := path + ".new"
+	if err := system.WriteRootFile(ctx, r, tmp, data, 0o644); err != nil {
+		return err
+	}
+	res, err := r.Run(ctx, system.Cmd{Name: "mv", Args: []string{"-f", "-T", "--", tmp, path}, Root: true})
+	if err != nil {
+		return fmt.Errorf("replacing %s: %w", path, err)
+	}
+	if res.Code != 0 {
+		return fmt.Errorf("replacing %s: mv exited with status %d: %s", path, res.Code, strings.TrimSpace(string(res.Stderr)))
+	}
+	return nil
 }

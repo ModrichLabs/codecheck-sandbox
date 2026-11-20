@@ -1,6 +1,7 @@
 package step
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -21,17 +22,23 @@ const lockPoll = 20 * time.Millisecond
 // FileLock holds an exclusive flock until Unlock or process exit.
 type FileLock struct{ f *os.File }
 
-// Lock takes an exclusive flock on path, creating the file if needed, and
-// retries until timeout before giving up with ErrBusy. flock locks belong to
-// the open file, so two Lock calls conflict even inside one process.
-func Lock(path string, timeout time.Duration) (*FileLock, error) {
-	// O_RDONLY suffices for flock, and lets a user open a root-owned 0644
-	// lock file that cc-launch created.
-	f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o644)
+// Lock takes an exclusive flock on path and retries until timeout before
+// giving up with ErrBusy, or until ctx ends. flock locks belong to the open
+// file, so two Lock calls conflict even inside one process.
+//
+// Lock never creates the file: a tmpfiles.d entry creates it at boot, owned
+// by root with mode 0644. A user-created file in a shared folder would stop
+// root's cc-launch from opening it under fs.protected_regular. Read-only
+// access suffices for flock.
+func Lock(ctx context.Context, path string, timeout time.Duration) (*FileLock, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening the lock: %w", err)
 	}
-	deadline := time.Now().Add(timeout)
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	poll := time.NewTicker(lockPoll)
+	defer poll.Stop()
 	for {
 		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
@@ -41,11 +48,15 @@ func Lock(path string, timeout time.Duration) (*FileLock, error) {
 			f.Close()
 			return nil, fmt.Errorf("locking %s: %w", path, err)
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, fmt.Errorf("waiting for %s: %w", path, ctx.Err())
+		case <-deadline.C:
 			f.Close()
 			return nil, fmt.Errorf("%s: %w", path, ErrBusy)
+		case <-poll.C:
 		}
-		time.Sleep(lockPoll)
 	}
 }
 
