@@ -350,7 +350,7 @@ func (LaunchRefused) EventName() string { return "launch_refused" }
 func AllEvents() []Event {
 	return []Event{
 		CommandRun{}, SetupPhaseReached{}, StepFinished{}, ReviewFinished{},
-		EnvironmentProfile{}, SelftestProbeFailed{}, LaunchRefused{},
+		EnvironmentProfile{}, SelftestProbeFailed{}, LaunchRefused{}, Exception{},
 	}
 }
 
@@ -378,6 +378,12 @@ func Properties(e Event) (map[string]any, error) {
 			out[name] = x.value()
 		case bool:
 			out[name] = x
+		case []StackFrame:
+			frames := make([]map[string]any, len(x))
+			for j, fr := range x {
+				frames[j] = fr.encode()
+			}
+			out[name] = frames
 		default:
 			return nil, fmt.Errorf("telemetry: %T.%s has type %s, which telemetry may not send", e, f.Name, f.Type)
 		}

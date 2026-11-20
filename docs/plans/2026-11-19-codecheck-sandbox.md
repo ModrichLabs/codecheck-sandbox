@@ -13,9 +13,10 @@ _Updated 2026-11-20._
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
   `feat/logging-telemetry` in its own worktree. `logging.go`,
-  `telemetry/events.go` and `telemetry/allowlist_test.go` done; next comes
-  `telemetry/exception.go`. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go`
-  v1.40.1 (the newest release at least two weeks old on 2026-11-20).
+  `telemetry/events.go`, `telemetry/allowlist_test.go` and
+  `telemetry/exception.go` done; next comes `telemetry/consent.go`. Pins:
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
+  least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -317,11 +318,17 @@ of repeating them.
     passed as a four-part version, and a free-text suffix (`1.0-alice`) passed
     as a pre-release. Versions now allow three numeric parts and only `dev`,
     `rc`, `alpha` and `beta` suffixes.
-- [ ] `telemetry/exception.go`: build `$exception` properties from an error: the
+- [x] `telemetry/exception.go`: build `$exception` properties from an error: the
       kind from `errors.As` against known types or sentinels, never
       `err.Error()`; a stack limited to frames inside the module, with file
       paths cut to the module root. **Tests:** an error wrapping
       `/home/x/secret` yields neither the path nor the message.
+  - _Done:_ `NewException(err, stepID)`; `kindRules` lists the project's
+    sentinels, then context, filesystem and exec errors; the rest become
+    `unknown`. File paths come from the function's package plus the file's base
+    name, never the build path. Frame fields have their own validating types,
+    and the allowlist test covers them. Later milestones that add sentinels
+    should add them to `kindRules`.
 - [ ] `telemetry/consent.go`: resolve on/off from `DO_NOT_TRACK`,
       `--no-telemetry`, `--yes`, TTY and `config.toml`; create or delete the
       install id. **Tests:** a table of every combination.
