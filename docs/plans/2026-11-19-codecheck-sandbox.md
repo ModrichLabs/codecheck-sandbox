@@ -12,7 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
 - **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. `pins/pins.go` done; next comes `fetch/codecheck.go`.
+  its own worktree. `pins/pins.go` and `fetch/codecheck.go` done; next comes
+  `fetch/download.go`.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -470,7 +471,7 @@ of repeating them.
     `assets/keys/ubuntu-cloudimage.asc`, from `keyserver.ubuntu.com`. A
     reflection test checks every pin's format and that the pins agree.
 
-- [ ] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
+- [x] `fetch/codecheck.go`: fetch the pinned CodeCheck commit into
       `~/.cache/codecheck-sandbox/codecheck.git` (a bare repository, HTTPS only,
       `git fetch --depth 1 <url> <commit>`, with `core.hooksPath=/dev/null` and
       `protocol.file.allow=never`), check that `rev-parse FETCH_HEAD` equals the
@@ -478,6 +479,13 @@ of repeating them.
       into the build inputs. **Tests:** against a local bare repository: the
       right commit, a mismatched commit refused, a non-HTTPS URL refused (except
       `file://` in tests through an injected option).
+  - _Done:_ `CodeCheck{...}.Archive(ctx)` returns the tar bytes. Beyond the
+    plan's flags, every git call also runs with `protocol.allow=never` plus
+    `protocol.https.allow=always`, and with `GIT_CONFIG_GLOBAL=/dev/null`,
+    `GIT_CONFIG_NOSYSTEM=1` and `GIT_TERMINAL_PROMPT=0`, so a `url.insteadOf` in
+    the user's config can't redirect the fetch. The commit must be exactly 40
+    hex characters. The happy-path test fetches by commit from a real local bare
+    repository; a `FakeRunner` covers the `FETCH_HEAD` mismatch.
 
 - [ ] `fetch/download.go`: HTTPS only, written to a temp file, then the SHA-256
       checked and the file renamed. It reports `Progress` events, and removes
