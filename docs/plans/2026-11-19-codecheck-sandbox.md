@@ -770,10 +770,18 @@ of repeating them.
     since `GIT_CONFIG_NOSYSTEM=1` ignores `/etc/gitconfig`. **For M10:** pack
     the initramfs (a newc cpio of `/init`), lay out the inputs disk with those
     names, check the marker with `debugfs` and hash the disk on the host.
-- [ ] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
+- [x] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
       picks the mode, and always ends with `reboot(LINUX_REBOOT_CMD_RESTART)`,
       even after a panic (spike S1: power-off hangs). **Test:** mode dispatch
       and the deferred reboot through an injectable syscall.
+  - _Done:_ the logic lives in `guestinit.RunInit` (dispatch, then sync and
+    reboot from a deferred function that also recovers a panic); `main` adds a
+    guard that refuses any PID but 1, so running it on a host by mistake can't
+    reboot anything. A test builds it with `CGO_ENABLED=0` and checks the ELF
+    has no interpreter or shared libraries. The init doesn't reap orphaned
+    grandchildren; a VM lives for one job, so zombies cost nothing before the
+    reboot. **For M10:** build it the same way and append `panic=1` to the boot
+    arguments, so a failed reboot still ends the VM.
 - [ ] `cc-claude`:
   - fixed flags (spec §6):
     `-p --restricted --strict-mcp-config --tools Read,Grep,Glob,Agent,Skill --allowedTools Read,Grep,Glob,Agent,Skill --plugin-dir … --permission-mode dontAsk --max-budget-usd … --no-session-persistence --output-format stream-json --verbose`;
