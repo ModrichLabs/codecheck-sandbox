@@ -9,14 +9,12 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
-  `main`.
-- **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. Every M3a task done and the
-  `/code-review medium` findings handled; next come the M3a pull request, then
-  M4 (platform and distro) on a new branch once it merges. Pins:
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
-  least two weeks old on 2026-11-20).
+- **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
+  logging and telemetry (#4) into `main`.
+- **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
+  its own worktree. `distro/osrelease.go` done; next comes `distro/packages.go`.
+- **Dependency pins:** choose versions at least two weeks old;
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -389,10 +387,15 @@ of repeating them.
 
 ## M4. Platform and distro (`internal/platform`, `internal/distro`)
 
-- [ ] `distro/osrelease.go`: parse `/etc/os-release`, then map `ID` and
+- [x] `distro/osrelease.go`: parse `/etc/os-release`, then map `ID` and
       `ID_LIKE` to a family: arch, debian, fedora, suse or unknown. Table-driven
       tests use real samples in
       `testdata/os-release/{arch,omarchy,ubuntu-24.04,debian-12,fedora-41,rhel-9,opensuse-tumbleweed,alpine}`.
+  - _Done:_ the SUSE family takes the name `opensuse`, matching the telemetry
+    enum. `Detect` falls back to `/usr/lib/os-release`. The `omarchy` sample
+    comes from the maintainer's machine; the others follow each release's
+    published os-release, written from reference rather than copied from a
+    running system.
 - [ ] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
       `squashfs-tools`, `git`, `iproute2` and `gnupg` to package names and an
       install argv for each family. Golden test of every family's argv.
