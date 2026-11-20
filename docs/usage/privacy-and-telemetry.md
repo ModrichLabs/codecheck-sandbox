@@ -1,8 +1,8 @@
 # Privacy and telemetry
 
-> **Planned.** No telemetry exists in the code yet. This page records the
-> commitments the design makes; the list of events becomes exact once the
-> telemetry code lands.
+> **Off in this release.** The telemetry code exists, but nothing can switch it
+> on until setup gains its consent question. The lists below match the events
+> the code defines.
 
 ## What always leaves your machine
 
@@ -46,13 +46,14 @@ containment holds in practice.
 ### What a report may contain
 
 - **Usage:** the command run, the setup phase reached, each step's outcome, the
-  review mode (full, diff or pull request), duration and cost as ranges (for
-  example "US$1–5"), and the versions of codecheck-sandbox and Claude Code.
+  review mode (full, diff or pull request), duration, cost and sub-agent count
+  as ranges (for example "US$1–5"), and the versions of codecheck-sandbox and
+  Claude Code.
 - **Errors:** the kind of error, the step it happened in, and a stack trace of
   this project's own function names and file paths, never the error message.
 - **Environment:** distribution family and version, CPU architecture, kernel
-  version, RAM and disk as ranges, firewall manager, SELinux or AppArmor mode,
-  and the privilege tool.
+  version (major and minor only), RAM and disk as ranges, firewall manager,
+  SELinux or AppArmor mode, the privilege tool, and the Firecracker version.
 - **Security signals, as counts:** proxy denials per review, `selftest` probes
   that failed, and `cc-launch` refusals by reason.
 
@@ -62,3 +63,9 @@ Code, file contents, file paths outside this project, repository names or URLs,
 pull request numbers, prompts, findings, error messages, your API key,
 hostnames, usernames, IP addresses, or exact costs and durations. A test in the
 code base checks this on every build.
+
+Every field in an event comes from a fixed list, a range or a version number,
+and anything else gets sent as "other" or "invalid". PostHog's Go library adds
+details of its own, such as the operating system's version; the CLI removes
+every property outside its list just before a batch leaves the machine, and
+refuses to send anything it cannot check.

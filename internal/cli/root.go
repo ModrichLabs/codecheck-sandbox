@@ -25,6 +25,12 @@ type Options struct {
 
 // NewRootCommand builds a fresh command tree, so tests never share state.
 func NewRootCommand() *cobra.Command {
+	return NewRootCommandWith(defaultTelemetry)
+}
+
+// NewRootCommandWith builds the command tree with the given telemetry client
+// factory; tests pass a fake.
+func NewRootCommandWith(newClient ClientFactory) *cobra.Command {
 	var opts Options
 
 	root := &cobra.Command{
@@ -69,6 +75,7 @@ func NewRootCommand() *cobra.Command {
 			},
 		},
 	)
+	withTelemetry(root, &opts, newClient)
 	return root
 }
 

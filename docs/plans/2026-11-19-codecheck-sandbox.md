@@ -12,11 +12,10 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. `logging.go`,
-  `telemetry/events.go`, `telemetry/allowlist_test.go`, `telemetry/exception.go`
-  `telemetry/consent.go`, `telemetry/client.go` and the pins done; next come the
-  hook points. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the
-  newest release at least two weeks old on 2026-11-20).
+  `feat/logging-telemetry` in its own worktree. Every M3a task done; next come
+  the M3a review and pull request, then M4 (platform and distro). Pins:
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
+  least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -354,10 +353,20 @@ of repeating them.
     allowlist as the last step before the network. It refuses anything other
     than a POST to `/batch/`, and any body it cannot decode. No `SecretKey` (no
     flag polling), no retries, GeoIP off.
-- [ ] Hook points: the engine emits `step_finished` through an injected client
+- [x] Hook points: the engine emits `step_finished` through an injected client
       (M3 tests use `Noop`); `cli` wraps every command for `command_run` and a
       final `Flush`. `cc-launch` never imports `internal/telemetry`; an import
       test enforces that.
+  - _Done:_ `step` can't import `telemetry` (telemetry imports step for its
+    error kinds), so `step.Options.OnStepFinished` takes a `StepResult` and
+    `telemetry.StepRecorder(client)` adapts it.
+    `cli.NewRootCommandWith(factory)` wraps every subcommand. **For M13:**
+    `defaultTelemetry` returns `Noop` until `config.go` can supply the stored
+    consent; M13 must wire `telemetry.Resolve`, `EnsureInstallID`, the state
+    folder and `telemetry.New` there, and open the log with `logging.New`. The
+    import test checks every `cmd/cc-*` package for `internal/telemetry`,
+    `posthog-go` and `net/http`; checked against a throwaway `cmd/cc-probe`, it
+    caught all three.
 - [x] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
       to `internal/pins`. Project key (public, write-only; a dedicated
       organisation in US Cloud, confirmed 2026-11-19 by a 200 from
@@ -365,7 +374,7 @@ of repeating them.
       `phc_pR2TVwdPiaMaERt5bD6h77nvDkhq59G7bsvip8aPNyiP`. An empty key still
       makes `PostHog` fall back to `Noop` (keep that test). Builds may override
       it with `-ldflags -X` so forks can point at their own project.
-- [ ] Commit each file pair separately (`feat(telemetry): …`,
+- [x] Commit each file pair separately (`feat(telemetry): …`,
       `feat(logging): …`).
 
 ## M4. Platform and distro (`internal/platform`, `internal/distro`)
