@@ -11,8 +11,8 @@ _Updated 2026-11-20._
   until each gets real behaviour).
 - **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
 - **In progress:** M3, the step engine (`internal/step`), on branch
-  `feat/step-engine` in its own worktree. `step.go`, `engine.go`, `manifest.go`
-  and `undo.go` done; next comes `lock.go`.
+  `feat/step-engine` in its own worktree. Every M3 task done; next comes the M3
+  review and pull request, then M3a (logging and telemetry).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -266,8 +266,12 @@ of repeating them.
     network items, which have no path); file and folder items need an allowed
     path, others may not carry one. Paths must be absolute and already clean.
     Unknown fields, kinds and states get refused.
-- [ ] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
+- [x] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
       **Test:** two lockers in one process, where the second gets `ErrBusy`.
+  - _Done:_ `Lock(path, timeout)` polls a non-blocking `flock` and opens the
+    file read-only, so a user can lock a root-owned 0644 file. **Later:**
+    something must create `/run/codecheck-sandbox/` (mode 1777 or group-owned)
+    at boot, for example a `tmpfiles.d` entry from the host-setup steps (M9).
 
 ## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
 
