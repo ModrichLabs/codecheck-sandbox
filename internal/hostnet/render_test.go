@@ -15,8 +15,8 @@ func TestRenderGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if len(files) != 3 {
-		t.Fatalf("Render gave %d files, want 3", len(files))
+	if len(files) != 4 {
+		t.Fatalf("Render gave %d files, want 4", len(files))
 	}
 	for _, f := range files {
 		golden := filepath.Join("testdata", "golden", filepath.Base(f.Path))
@@ -44,6 +44,7 @@ func TestRenderPaths(t *testing.T) {
 		"/etc/systemd/system/codecheck-net.service":         true,
 		"/etc/codecheck-sandbox/rules.nft":                  true,
 		"/etc/NetworkManager/conf.d/codecheck-sandbox.conf": true,
+		"/etc/systemd/system/codecheck-proxy.service":       true,
 	}
 	for _, f := range files {
 		if !want[f.Path] {
@@ -56,7 +57,7 @@ func TestUnitLoadsRulesBeforeTheTapComesUp(t *testing.T) {
 	files, _ := Render(DefaultConfig())
 	var unit string
 	for _, f := range files {
-		if strings.HasSuffix(f.Path, ".service") {
+		if strings.HasSuffix(f.Path, "codecheck-net.service") {
 			unit = string(f.Content)
 		}
 	}
@@ -65,6 +66,31 @@ func TestUnitLoadsRulesBeforeTheTapComesUp(t *testing.T) {
 	up := strings.Index(unit, "ExecStart=ip link set dev cc-tap0 up")
 	if rules < 0 || tap < 0 || up < 0 || !(rules < tap && tap < up) {
 		t.Errorf("the unit must load the rules, then add the tap, then bring it up:\n%s", unit)
+	}
+}
+
+func TestProxyUnitHardening(t *testing.T) {
+	files, _ := Render(DefaultConfig())
+	var unit string
+	for _, f := range files {
+		if strings.HasSuffix(f.Path, "codecheck-proxy.service") {
+			unit = string(f.Content)
+		}
+	}
+	for _, want := range []string{
+		"BindsTo=codecheck-net.service", "After=codecheck-net.service",
+		"DynamicUser=yes",
+		"LoadCredential=api-key:/etc/codecheck-sandbox/api-key",
+		"LoadCredential=ca-key:/etc/codecheck-sandbox/ca/ca.key",
+		"LogsDirectory=codecheck-sandbox",
+		"ProtectSystem=strict", "PrivateTmp=yes", "NoNewPrivileges=yes",
+		"RestrictAddressFamilies=AF_INET AF_INET6",
+		"CapabilityBoundingSet=\n",
+		"ExecStart=/usr/local/lib/codecheck-sandbox/bin/codecheck-sandbox proxy --listen 172.16.0.1:3180 --client 172.16.0.2",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("proxy unit lacks %q", want)
+		}
 	}
 }
 

@@ -1,0 +1,41 @@
+# Written by codecheck-sandbox setup; uninstall removes it.
+[Unit]
+Description=codecheck-sandbox egress proxy for the review VMs
+After=codecheck-net.service
+BindsTo=codecheck-net.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/codecheck-sandbox/bin/codecheck-sandbox proxy --listen 172.16.0.1:3180 --client 172.16.0.2 --ca-cert /etc/codecheck-sandbox/ca/ca.crt --deny-log /var/log/codecheck-sandbox/proxy.jsonl
+Restart=on-failure
+RestartSec=2
+
+# A throwaway user; the two secrets arrive as credentials only it can read.
+DynamicUser=yes
+LoadCredential=api-key:/etc/codecheck-sandbox/api-key
+LoadCredential=ca-key:/etc/codecheck-sandbox/ca/ca.key
+LogsDirectory=codecheck-sandbox
+UMask=0022
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

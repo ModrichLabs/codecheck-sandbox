@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,11 @@ type Deps struct {
 	FS system.FS
 	// Record hears every item Apply creates, for the manifest; nil drops them.
 	Record func(step.Item)
+	// APIKey supplies the key the wizard collected; nil means none.
+	APIKey func() (string, error)
+	// Executable names the running binary, which the proxy step installs;
+	// nil means os.Executable.
+	Executable func() (string, error)
 }
 
 const (
@@ -38,7 +44,8 @@ const (
 )
 
 func init() {
-	telemetry.RegisterStepIDs(idJailUser, idJailerBase, idRules, idNM, idTap, idFirewalld, idUfw, idSELinux)
+	telemetry.RegisterStepIDs(idJailUser, idJailerBase, idRules, idNM, idTap, idFirewalld, idUfw, idSELinux,
+		idProxyBinary, idProxyCA, idAPIKey, idProxyService)
 }
 
 // Steps returns the host phase in order: the rules load before the tap
@@ -62,7 +69,9 @@ func Steps(d Deps) ([]step.Step, error) {
 	}
 	return []step.Step{
 		d.jailUser(), d.jailerBase(), d.rules(), d.nmUnmanaged(),
-		d.tapService(), d.firewalld(), d.ufw(), d.selinux(),
+		d.tapService(), d.firewalld(), d.ufw(),
+		d.proxyBinary(), d.proxyCA(), d.apiKey(), d.proxyService(),
+		d.selinux(), // last, so it labels everything above
 	}, nil
 }
 
@@ -158,18 +167,22 @@ func (d Deps) ensureDir(ctx context.Context, id, p string) error {
 	return nil
 }
 
-// undoFiles removes file items, then empty folder items, in that order.
+// undoFiles removes file items, then empty folder items, deepest first so a
+// parent goes after its children.
 func (d Deps) undoFiles(ctx context.Context, items []step.Item) error {
 	var errs []error
+	var dirs []string
 	for _, it := range items {
-		if it.Kind == step.KindFile {
+		switch it.Kind {
+		case step.KindFile:
 			errs = append(errs, d.run(ctx, root("rm", "-f", "--", it.Path)))
+		case step.KindDir:
+			dirs = append(dirs, it.Path)
 		}
 	}
-	for _, it := range items {
-		if it.Kind == step.KindDir {
-			errs = append(errs, d.run(ctx, root("rmdir", "--ignore-fail-on-non-empty", "--", it.Path)))
-		}
+	slices.SortStableFunc(dirs, func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") })
+	for _, p := range dirs {
+		errs = append(errs, d.run(ctx, root("rmdir", "--ignore-fail-on-non-empty", "--", p)))
 	}
 	return errors.Join(errs...)
 }
@@ -613,7 +626,7 @@ func (d Deps) ufw() step.Step {
 
 func (d Deps) selinux() step.Step {
 	c := d.Config
-	candidates := []string{path.Dir(c.RulesPath), path.Dir(c.HashPath), c.JailerBase, "/usr/local/lib/codecheck-sandbox", c.UnitPath}
+	candidates := []string{path.Dir(c.RulesPath), path.Dir(c.HashPath), c.JailerBase, "/usr/local/lib/codecheck-sandbox", c.UnitPath, c.ProxyUnitPath}
 	present := func() []string {
 		var out []string
 		for _, p := range candidates {
