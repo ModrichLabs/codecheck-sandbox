@@ -12,8 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
 - **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. `pins/pins.go`, `fetch/codecheck.go` and `fetch/download.go`
-  done; next comes `fetch/gpg.go`.
+  its own worktree. `pins/pins.go`, `fetch/codecheck.go`, `fetch/download.go`
+  and `fetch/gpg.go` done; next comes `fetch/npmtar.go`.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -498,11 +498,18 @@ of repeating them.
     `step.ReportProgress` unless injected, at most once per MiB. Any failure
     (hash, HTTP status, a short body) removes the temporary file and leaves
     `dest` untouched.
-- [ ] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
+- [x] `fetch/gpg.go`: verify `SHA256SUMS` against `SHA256SUMS.gpg` with the
       embedded Ubuntu key in `assets/keys/ubuntu-cloudimage.asc`, then look up
       the squashfs line.
   - **Tests:** a test key signs fixtures; check good, tampered and wrong-key
     cases.
+  - _Done:_ `ProtonMail/go-crypto` v1.5.2 (2026-09-25). The key loads through a
+    root `assets` package (`go:embed` can't reach parent folders). `VerifySums`
+    needs exactly one key whose fingerprint equals the pin. `VerifiedUbuntuSum`
+    also requires the signed hash to equal the pinned one. Ubuntu's real
+    `SHA256SUMS` and signature for the pinned release sit in
+    `internal/fetch/testdata/ubuntu/`; that test found Ubuntu armours its `.gpg`
+    signature, so both armoured and binary signatures verify.
 - [ ] `fetch/npmtar.go`: download the pinned tarball, check its `sha512`
       integrity, extract only `package/claude` (refusing links, absolute paths
       and `..`), cap the size, and check the binary's SHA-256. Never runs npm,
