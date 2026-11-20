@@ -4,11 +4,13 @@ go 1.27
 
 require (
 	charm.land/log/v2 v2.0.1
+	github.com/posthog/posthog-go v1.40.1
 	github.com/spf13/cobra v1.10.2
 )
 
 require (
 	charm.land/lipgloss/v2 v2.0.5 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
 	github.com/charmbracelet/x/ansi v0.11.7 // indirect
@@ -18,7 +20,11 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
+	github.com/goccy/go-json v0.10.6 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
@@ -28,4 +34,5 @@ require (
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 )

@@ -14,9 +14,9 @@ _Updated 2026-11-20._
 - **In progress:** M3a, logging and telemetry, on branch
   `feat/logging-telemetry` in its own worktree. `logging.go`,
   `telemetry/events.go`, `telemetry/allowlist_test.go`, `telemetry/exception.go`
-  and `telemetry/consent.go` done; next comes `telemetry/client.go`. Pins:
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
-  least two weeks old on 2026-11-20).
+  `telemetry/consent.go`, `telemetry/client.go` and the pins done; next come the
+  hook points. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the
+  newest release at least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -337,7 +337,7 @@ of repeating them.
     treat it as `Off`). The config arrives as a `*bool`, so M13's `config.go`
     supplies it. `EnsureInstallID` keeps a UUIDv4 in `telemetry/install-id`
     (0600) and replaces a tampered file; `Forget` deletes the id and the queue.
-- [ ] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
+- [x] `telemetry/client.go`: a `Client` interface (`Capture`, `Flush`) with
       `Noop` and `PostHog`. Queue to
       `~/.local/state/codecheck-sandbox/telemetry/queue.jsonl` (1 MB cap, oldest
       dropped); `Flush` sends through `posthog-go` (pinned version, feature
@@ -347,11 +347,18 @@ of repeating them.
       `httptest` server receives the batch with the expected properties; a
       hanging server never delays `Flush` past the deadline; a server error
       leaves the command's exit code alone.
+  - _Done:_ `New(Options)`; `Flush` takes the queue first (at-most-once: a
+    failed send drops events). posthog-go adds `$os`, `$os_version`,
+    `$os_distro` and `$go_version` after its `BeforeSend` hook, so a wrapping
+    HTTP transport (`stripTransport`) filters every batch against the property
+    allowlist as the last step before the network. It refuses anything other
+    than a POST to `/batch/`, and any body it cannot decode. No `SecretKey` (no
+    flag polling), no retries, GeoIP off.
 - [ ] Hook points: the engine emits `step_finished` through an injected client
       (M3 tests use `Noop`); `cli` wraps every command for `command_run` and a
       final `Flush`. `cc-launch` never imports `internal/telemetry`; an import
       test enforces that.
-- [ ] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
+- [x] Pins: add the PostHog host `https://us.i.posthog.com` and the project key
       to `internal/pins`. Project key (public, write-only; a dedicated
       organisation in US Cloud, confirmed 2026-11-19 by a 200 from
       `us.i.posthog.com/flags` and a 401 from EU):
