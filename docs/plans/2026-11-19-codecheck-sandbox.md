@@ -869,7 +869,7 @@ of repeating them.
     `hostnet`'s rule hash moved to `internal/rulehash`, since `hostnet` imports
     telemetry and `cc-launch` must not; `rulehash.Live` takes a `root` switch.
     **For M10/M11:** make run ids with `launch.NewRunID`.
-- [ ] `launch/verify.go`, in order:
+- [x] `launch/verify.go`, in order:
   1. the lock
   2. the kernel and root disk SHA-256 against
      `/var/lib/codecheck-sandbox/images.sha256`
@@ -880,6 +880,27 @@ of repeating them.
   5. the run disks: size caps and the ext4 magic number
 
   **Tests:** each failure path, using `MemFS` and `FakeRunner`.
+
+  - _Done:_ `Verify(ctx, env, id, build)` returns a `Job` or a `CheckError`
+    naming the check (`binaries`, `image-hash`, `rule-hash`, `proxy-owner`,
+    `run-disks`); the lock stays with the caller (the command task). It first
+    checks that `firecracker` and `jailer` are plain, root-owned files no one
+    else can write. `images.sha256` must list exactly the kernel and root disk
+    (absolute paths, `sha256sum` format). The proxy check takes every LISTEN
+    entry in `/proc/net/tcp` and `tcp6` that covers `172.16.0.1:3180` (wildcards
+    included), wants exactly one, and needs every pid holding it in
+    `0::/system.slice/codecheck-proxy.service`; checked against this host's real
+    `/proc`. The run folder must hold exactly `config.img` (a block for this run
+    id, mode matching the request) and the mode's disks, each root-owned, plain,
+    within its cap and with its magic number: `code.ext4` (≤ 16 GiB) for reviews
+    and selftests; `vmlinux`, `init.cpio`, `base.squashfs` and `inputs.ext4` for
+    builds, which skip the image, rule and proxy checks (no image yet, no
+    network). **Deviation:** tests use real files in a temp folder (owners,
+    symlinks, sizes and magic need them) and a fake `/proc`, not `MemFS`. A
+    `hostnet` test keeps `launch`'s copies of the proxy address, unit, table and
+    paths in step with `hostnet.DefaultConfig`. **For M10:** write
+    `images.sha256` in that format; **for M11:** fill the run folder with
+    exactly those files.
 
 - [ ] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
       images) and copies (run disks), then build the
