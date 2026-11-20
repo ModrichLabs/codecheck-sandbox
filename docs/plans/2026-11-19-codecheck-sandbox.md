@@ -12,9 +12,10 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. `logging.go` done; next comes
-  `telemetry/events.go`. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go`
-  v1.40.1 (the newest release at least two weeks old on 2026-11-20).
+  `feat/logging-telemetry` in its own worktree. `logging.go` and
+  `telemetry/events.go` done; next comes `telemetry/allowlist_test.go`. Pins:
+  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
+  least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -296,9 +297,15 @@ of repeating them.
     in all (`codecheck-sandbox.log` plus `.1` to `.4`), each 0600 in a 0700
     folder; rotation uses the standard library. The `--debug` console copy
     (`charm.land/log/v2`) goes through the Redactor too.
-- [ ] `telemetry/events.go`: typed event structs for usage, errors, environment
+- [x] `telemetry/events.go`: typed event structs for usage, errors, environment
       profile and security signals, with enum and band types (`DurationBand`,
       `CostBand`, `SizeBand`). **Tests:** band edges.
+  - _Done:_ every field holds a `bool` or a package type with an unexported
+    `value()` method that validates itself on encoding (unknown enum or band →
+    `"other"`, a bad version → `"invalid"`); `Properties` refuses any other
+    field type. Also `CountBand` (sub-agents, proxy denials). Step IDs count
+    only once registered: **later step milestones (M6–M11) must call
+    `telemetry.RegisterStepIDs` from `init`.**
 - [ ] `telemetry/allowlist_test.go`, the safety test: fill every event with the
       worst values each type allows, add a planted key, path, repo URL, hostname
       and username to the surrounding context (step errors, config,
