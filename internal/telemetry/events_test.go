@@ -131,6 +131,19 @@ func TestVersionAcceptsRealVersions(t *testing.T) {
 	}
 }
 
+func TestVersionRejectsSmuggledText(t *testing.T) {
+	for _, v := range []string{"1.0-alice", "10.20.30.40", "1.2.3-sk-ant", "v1/../home", "1.0 alice", ""} {
+		if got := Version(v).value(); got != "invalid" {
+			t.Errorf("Version(%q) encodes as %v, want invalid", v, got)
+		}
+	}
+	for _, v := range []string{"0.1.0-rc1", "1.0.0-beta.2", "2.0.0-alpha"} {
+		if got := Version(v).value(); got != v {
+			t.Errorf("Version(%q) encodes as %v", v, got)
+		}
+	}
+}
+
 func TestStepIDRejectsFreeText(t *testing.T) {
 	RegisterStepIDs("nft-rules")
 	for _, s := range []string{"/etc/passwd", "Hello World", "sk-ant-api03-abc", "a.b", ""} {

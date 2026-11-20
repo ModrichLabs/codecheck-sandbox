@@ -12,10 +12,10 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2) and M3 the step engine (#3) into
   `main`.
 - **In progress:** M3a, logging and telemetry, on branch
-  `feat/logging-telemetry` in its own worktree. `logging.go` and
-  `telemetry/events.go` done; next comes `telemetry/allowlist_test.go`. Pins:
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 (the newest release at
-  least two weeks old on 2026-11-20).
+  `feat/logging-telemetry` in its own worktree. `logging.go`,
+  `telemetry/events.go` and `telemetry/allowlist_test.go` done; next comes
+  `telemetry/exception.go`. Pins: `charm.land/log/v2` v2.0.1 and `posthog-go`
+  v1.40.1 (the newest release at least two weeks old on 2026-11-20).
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -306,12 +306,17 @@ of repeating them.
     field type. Also `CountBand` (sub-agents, proxy denials). Step IDs count
     only once registered: **later step milestones (M6–M11) must call
     `telemetry.RegisterStepIDs` from `init`.**
-- [ ] `telemetry/allowlist_test.go`, the safety test: fill every event with the
+- [x] `telemetry/allowlist_test.go`, the safety test: fill every event with the
       worst values each type allows, add a planted key, path, repo URL, hostname
       and username to the surrounding context (step errors, config,
       environment), serialise, and assert that none of them appear. A reflection
       walk also fails the test if any event field has a plain `string` type
       outside the enum and version types.
+  - _Done:_ the test plants an IP address and an error message too. It caught
+    two leaks through `Version` on its first run, both fixed: an IPv4 address
+    passed as a four-part version, and a free-text suffix (`1.0-alice`) passed
+    as a pre-release. Versions now allow three numeric parts and only `dev`,
+    `rc`, `alpha` and `beta` suffixes.
 - [ ] `telemetry/exception.go`: build `$exception` properties from an error: the
       kind from `errors.As` against known types or sentinels, never
       `err.Error()`; a stack limited to frames inside the module, with file

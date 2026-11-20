@@ -166,7 +166,9 @@ func (s StepID) value() any {
 // major.minor or a distro version id; anything else encodes as "invalid".
 type Version string
 
-var versionPattern = regexp.MustCompile(`^v?\d{1,5}(\.\d{1,5}){0,3}(-[0-9A-Za-z.]{1,20})?$`)
+// At most three numeric parts, since four would let an IPv4 address through,
+// and only the dev, rc, alpha and beta suffixes, so no free text rides along.
+var versionPattern = regexp.MustCompile(`^v?\d{1,5}(\.\d{1,5}){0,2}(-(dev|rc|alpha|beta)(\.?\d{1,3})?)?$`)
 
 func (v Version) value() any {
 	if string(v) == "rolling" || versionPattern.MatchString(string(v)) {
