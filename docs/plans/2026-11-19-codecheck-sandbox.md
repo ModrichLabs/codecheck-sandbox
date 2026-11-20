@@ -782,14 +782,26 @@ of repeating them.
     grandchildren; a VM lives for one job, so zombies cost nothing before the
     reboot. **For M10:** build it the same way and append `panic=1` to the boot
     arguments, so a failed reboot still ends the VM.
-- [ ] `cc-claude`:
+- [x] `cc-claude`:
   - fixed flags (spec §6):
     `-p --restricted --strict-mcp-config --tools Read,Grep,Glob,Agent,Skill --allowedTools Read,Grep,Glob,Agent,Skill --plugin-dir … --permission-mode dontAsk --max-budget-usd … --no-session-persistence --output-format stream-json --verbose`;
     never `--bare`
   - the placeholder key, `NODE_EXTRA_CA_CERTS`, the telemetry variables, and
     `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`
-  - in diff mode, a git allowlist that excludes `--ext-diff`, `--output` and
-    `-c`
+  - ~~in diff mode, a git allowlist that excludes `--ext-diff`, `--output` and
+    `-c`~~ (replaced by spec amendment 9)
+  - _Done:_ `assets/guest/cc-claude`, a bash script embedded as `assets.Guest`.
+    It checks `CC_MAX_BUDGET_USD`, `CC_SCOPE` and `CC_BASE` against the same
+    patterns as the config parser, puts the prompt straight after `-p`
+    (`--allowedTools` takes several values and would swallow a trailing prompt),
+    runs in `/work/src`, and sets `safe.directory` through `GIT_CONFIG_COUNT`
+    (the command scope, which git trusts). **Spec amendment 9** (the
+    maintainer's choice, 2026-11-21): the diff prompt points Claude at
+    `/work/change/diff.patch` and `/work/change/status.txt`, so the tool list
+    never grows. Tests run the script against a stand-in `claude` and check the
+    argument vector and environment, plus a text check for `--restricted`,
+    `--strict-mcp-config`, the exact `--tools` list, and no `--bare` or `Bash`;
+    disabling the budget check failed two of them.
 - [ ] `cc-selftest`: the eight original probes, plus other host ports, IPv6
       link-local, a Docker-published port when present, DNS, and a spoofed
       source address using `ip addr add` (which the probe should not manage to
@@ -867,6 +879,10 @@ of repeating them.
     for paths).
   - `--pr N` fetches `pull/N/head`.
   - `--base REF`, or the merge base with the default branch, sets diff mode.
+  - In diff mode, after `harden.go`, write `git diff <base>` and
+    `git status --porcelain` (run through `system.Runner` with a clean
+    environment) to `change/diff.patch` and `change/status.txt` beside the clone
+    (spec amendment 9).
 
   **Tests** use local git repos in `t.TempDir()`.
 
@@ -874,9 +890,11 @@ of repeating them.
       settings and remote only), and remove `.git/hooks`. **Test:** a planted
       `diff.external` and a hook both disappear.
 - [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
-      from `du` plus 30%; the config block (key=value, fixed 4 KB, no secrets:
-      mode, budget, prompt, baseline); and a blank output disk. **Tests** run
-      against small fixtures when `mkfs.ext4` exists.
+      from `du` plus 30%, with the clone at `src/` and any diff files at
+      `change/`; the config block from `guestinit.Encode` (fixed 4 KB, no
+      secrets: mode, budget, scope, baseline; the prompt lives in `cc-claude`);
+      and a blank output disk. **Tests** run against small fixtures when
+      `mkfs.ext4` exists.
 - [ ] `review/postrun.go`, from the extracted files:
   - the result event (`subtype`, `is_error`, `total_cost_usd`)
   - refusal patterns
