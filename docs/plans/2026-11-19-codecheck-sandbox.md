@@ -929,10 +929,26 @@ of repeating them.
     `/proc/self/mountinfo` shows no mount left inside it. **Untested on a real
     host:** `--parent-cgroup` inside a scope (spike S1 finding 8 left it open);
     **for M15:** boot a VM and check `systemd-cgls` before trusting it.
-- [ ] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
+- [x] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
       capped at 200 MB, `stderr.log` at 5 MB, `exit-code` at 16 bytes),
       `debugfs -R "cat /<f>"`, run as `nobody` through `setpriv`. Then clean up
       the chroot and the run folder. **Tests:** caps and the file list.
+  - _Done:_ the guest's names win: `stream.jsonl` (not `transcript.jsonl`),
+    `stderr.log`, `exit-code`. `CollectOutDisk` moves the writable disk out of
+    the jail into the run folder (root-owned, 0444; copies across filesystems),
+    so the jail can go. `Extract` runs
+    `setpriv --reuid=65534 --regid=65534 --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all -- debugfs -R "cat /<f>"`
+    into `runs/<id>/result/` (0700, owned by `SUDO_UID`/`SUDO_GID`; files 0600,
+    created `O_EXCL|O_NOFOLLOW`). `debugfs` exits 0 for a missing file and says
+    so on stderr after its version banner (checked against e2fsprogs 1.47.4), so
+    any other stderr line means "missing", and the file stays absent. A file
+    over its cap gets deleted and reported as `ErrTooLarge`; past the cap
+    `debugfs` dies of SIGPIPE, which a test checks against a real process. A
+    build instead needs `/etc/codecheck-sandbox/build-complete` to hold the run
+    id (`ErrBuildIncomplete`) and keeps `rootfs.ext4` in the run folder for M10.
+    `Tidy` leaves only `result/` (and a build's disk); `RemoveRun` deletes the
+    folder once the CLI has read it. **For M11:** read `result/`, then run
+    `cc-launch clean <id>`.
 - [ ] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
       else and exits with documented codes.
 - [ ] `assets/host/sudoers`:

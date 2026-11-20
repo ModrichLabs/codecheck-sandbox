@@ -89,6 +89,10 @@ type Env struct {
 	// JailUID and JailGID name the unprivileged account Firecracker runs
 	// as (fcjail); main looks them up.
 	JailUID, JailGID int
+
+	// ResultUID and ResultGID own the copied results: the user who ran
+	// sudo (SUDO_UID and SUDO_GID).
+	ResultUID, ResultGID int
 }
 
 // Job describes a run that passed every check.
