@@ -1,0 +1,22 @@
+#!/usr/sbin/nft -f
+# Written by codecheck-sandbox setup; uninstall removes it.
+#
+# The first two lines make loading this file one atomic replacement on any
+# nftables version: create the table if missing, delete it, define it afresh.
+table inet {{.Table}}
+delete table inet {{.Table}}
+
+table inet {{.Table}} {
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		# The review VM may reach the egress proxy, and nothing else.
+		iifname "{{.Tap}}" ip saddr {{.GuestIP}} ip daddr {{.HostIP}} tcp dport {{.ProxyPort}} accept
+		iifname "cc-tap*" drop
+	}
+
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		iifname "cc-tap*" drop
+		oifname "cc-tap*" drop
+	}
+}

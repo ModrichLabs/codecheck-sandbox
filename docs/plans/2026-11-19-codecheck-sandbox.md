@@ -10,11 +10,10 @@ _Updated 2026-11-20._
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
-  logging and telemetry (#4) and M4 platform and distro (#5) into `main`.
-- **In progress:** M5, pins and downloads, on branch `feat/pins-downloads` in
-  its own worktree. Every M5 task done and the `/code-review medium` findings
-  fixed; next come the M5 pull request, then M6 (host network) on a new branch
-  once it merges.
+  logging and telemetry (#4), M4 platform and distro (#5) and M5 pins and
+  downloads (#7) into `main`.
+- **In progress:** M6, host network, on branch `feat/host-network` in its own
+  worktree. The templates done; next comes `hostnet/rulehash.go`.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -533,7 +532,7 @@ of repeating them.
 
 ## M6. Host network (`internal/hostnet`)
 
-- [ ] Templates in `assets/host/`:
+- [x] Templates in `assets/host/`:
   - `codecheck-net.service`: creates the tap, sets its address, turns IPv6 off
     and brings it up, then loads the rules.
   - `rules.nft`: uses `destroy table`, then `table`, with the review allow rule
@@ -542,6 +541,19 @@ of repeating them.
 
   `hostnet.Render(Config)` fills them in. **Golden tests** in
   `testdata/golden/`.
+
+  - _Done:_ `rules.nft` replaces the table with `table` / `delete table` /
+    `table { … }` in one file instead of `destroy table`, which needs nftables
+    1.0.8+ (Debian 12 ships 1.0.6); one `nft -f` keeps it atomic. The unit loads
+    the rules **before** it creates the tap, so the tap never exists unfiltered
+    (the rules match `iifname` strings), clears a stale tap first, and removes
+    both on stop. Input hook: `cc-tap0` may reach only `172.16.0.1:3180/tcp`;
+    everything else from `cc-tap*` drops. Forward hook: all `cc-tap*` traffic
+    drops. `Config.Validate` refuses values that could inject template text or
+    widen the rules. The rendered rules loaded cleanly, twice, with real nft
+    1.1.7 in an unprivileged namespace (`unshare -rn`), leaving one table; its
+    JSON listing became the rule-hash fixture. **For spec §7:** the spec's
+    "destroy table" wording now reads as this idiom.
 
 - [ ] `hostnet/rulehash.go`: canonical JSON from
       `nft -j list table inet codecheck`, with handles stripped and keys sorted,
