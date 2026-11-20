@@ -56,7 +56,7 @@ func TestRootDefinesGlobalFlags(t *testing.T) {
 func TestStubSubcommandsReportNotImplemented(t *testing.T) {
 	for _, name := range []string{
 		"setup", "doctor", "selftest", "canary", "review", "rebuild",
-		"uninstall", "telemetry", "proxy",
+		"uninstall", "telemetry",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := execute(t, name)
