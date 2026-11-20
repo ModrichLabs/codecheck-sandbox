@@ -726,12 +726,25 @@ of repeating them.
     most, no repeated or unknown keys, and no key outside its mode. `Encode`
     writes the same block for the host. **For M9/M11:** build the config device
     with `guestinit.Encode`.
-- [ ] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
+- [x] `internal/guestinit/review.go`: mounts (`/proc`, `/sys`, `/dev`, a tmpfs
       over writable paths, code disk read-only at `/work`, output disk at
       `/out`), `eth0` at 172.16.0.2 with no default route and IPv6 off, then
       runs `cc-claude` or `cc-selftest` as `agent` through `setpriv`, and writes
       `exit-code` to `/out`. Mounts and commands go through an interface, so
       tests use fakes.
+  - _Done:_ the `Sys` interface (mount, files, device read, sync) plus
+    `system.Runner`, which gained `Stdout`/`Stderr` writers, `Dir` and `Chroot`
+    (`PrivRunner` refuses them on root commands). Drive order: `vda` root, `vdb`
+    config, then for a review `vdc` code and `vdd` output, for a selftest `vdc`
+    output. The code disk mounts `ro,nosuid,nodev,noexec,noload` (no journal
+    replay); tmpfs covers `/tmp`, `/run`, `/var/tmp` and the agent's 0700 home.
+    The agent runs as uid 10001 via
+    `setpriv --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all`,
+    with a clean environment holding only `PATH`, `HOME` and `CC_*` settings;
+    the init (as root) opens `/out/stream.jsonl` and `/out/stderr.log` (0600),
+    so the agent can't touch `/out` itself. **For M9:** attach drives in that
+    order, and cap the copies off `/out`, since the guest caps nothing but the
+    disk size.
 - [ ] `internal/guestinit/build.go`: as root, copy the base tree from the
       squashfs onto the target disk (keeping owners, modes, setuid and links),
       add the inputs disk's files (`claude`, the plugin, `cc-claude`,
