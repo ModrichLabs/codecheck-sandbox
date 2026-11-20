@@ -9,13 +9,11 @@ _Updated 2026-11-20._
   `/code-review medium` ran on M1; 7 findings fixed, 2 deferred on purpose (the
   global flags reach no command until M13; stub commands accept any arguments
   until each gets real behaviour).
-- **Merged:** the bootstrap pull request (#1) into `main`.
-- **In progress:** M2, the system layer (`internal/system`), on branch
-  `feat/system-layer` in its own worktree. `runner.go`, `fake.go`,
-  `privilege.go`, `fs.go`, `keepalive.go` and `redact.go` done (`fake.go` moved
-  ahead, since the privilege tests need it). `/code-review medium` found 10
-  issues; all got fixed or documented. Next: the M2 pull request, then M3 (the
-  step engine) on a new branch once it merges.
+- **Merged:** M1 (#1) and M2, the system layer (#2), into `main`.
+- **In progress:** M3, the step engine (`internal/step`), on branch
+  `feat/step-engine` in its own worktree. Every M3 task done, and the
+  `/code-review medium` findings fixed; next comes the M3 pull request, then M3a
+  (logging and telemetry) on a new branch once it merges.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
   unless a task blocks.
 - **Machine facts for later milestones:** the spike files live outside the
@@ -233,11 +231,11 @@ of repeating them.
 
 ## M3. Step engine (`internal/step`)
 
-- [ ] `step.go`:
+- [x] `step.go`:
   - `type Step interface{ ID() string; Title() string; Phase() Phase; Check(ctx) (Status, error); Plan(ctx) (Plan, error); Apply(ctx) error; Undo(ctx) error }`.
   - `Plan` holds `[]PlannedCmd` and `[]PlannedFile{Path, Mode, Content}`, plus a
     `NeedsRoot` flag.
-- [ ] `engine.go`:
+- [x] `engine.go`:
   - `Run(ctx, steps, Mode{DryRun, AssumeYes}, events chan<- Event, confirm ConfirmFunc)`.
   - It runs `Check`, and skips a step when the check passes. Otherwise it builds
     the plan, asks for confirmation (unless `--yes`), applies, and checks again.
@@ -245,11 +243,23 @@ of repeating them.
     `StepFailed`, `NeedsSudo` and `Progress`.
   - **Tests:** skip-when-passing; dry-run never calls `Apply`; a declined
     confirm stops the run; a failed re-check marks the step failed; event order.
-- [ ] `undo.go`:
+  - _Done:_
+    `Run(ctx, steps, Options{DryRun, AssumeYes, Events, Confirm, Elevate})`; the
+    `Elevate` hook runs the `sudo -v` handover once, before the first root step
+    that applies, and again (with one retry) when `Apply` returns
+    `system.ErrLoginExpired`. The first failure or a refusal stops the run.
+    Steps report progress with `ReportProgress(ctx, msg, fraction)`.
+- [x] `undo.go`:
   - `Uninstall(ctx, steps, manifest)` runs `Undo` in reverse, only for steps the
     manifest lists as `created`.
   - **Tests:** order, and the skipping of `adopted` and missing entries.
-- [ ] `manifest.go`:
+  - _Done:_ `Uninstall(ctx, steps, manifest, Options)`. `Step.Undo(ctx, items)`
+    receives only the step's created items, so a step that adopted some packages
+    and created others removes only the latter. It elevates once before the
+    first `Undo` and again on `system.ErrLoginExpired`; a dry run changes
+    nothing. A failed `Undo` doesn't stop the rest, and `Uninstall` returns
+    every failure joined. A nil manifest gives `ErrNoManifest`.
+- [x] `manifest.go`:
   - Schema
     `{version:1, installedBy, items:[{id, kind, path, state:created|adopted}]}`.
   - Load and save through `system.WriteRootFile` to
@@ -257,8 +267,22 @@ of repeating them.
   - Every path gets checked against a compiled allowlist (spec §8).
   - **Tests:** round trip; rejection of a path outside the allowlist; an unknown
     schema version gets refused.
-- [ ] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
+  - _Done:_ items gain an optional `name` (for users, packages, units and
+    network items, which have no path); file and folder items need an allowed
+    path, others may not carry one. Paths must be absolute and already clean.
+    Names must come from a code-defined list (`allowedNames`: the jail user, the
+    units, `cc-tap0`, `inet codecheck`, and spec §3's packages under each distro
+    family's name; M6 must keep the package list in step). Unknown fields,
+    kinds, states and trailing data get refused. `Save` fills
+    `manifest.json.new` and renames it over the manifest with `mv -f -T`.
+- [x] `lock.go`: `flock` on `/run/codecheck-sandbox/lock` with a timeout.
       **Test:** two lockers in one process, where the second gets `ErrBusy`.
+  - _Done:_ `Lock(ctx, path, timeout)` polls a non-blocking `flock`, stops when
+    `ctx` ends, and opens the file read-only without ever creating it. **Later
+    (M9):** a `tmpfiles.d` entry must create `/run/codecheck-sandbox/`
+    (root, 0755) and the `lock` file in it (root, 0644) at boot. A file the user
+    created would stop root's `cc-launch` from opening it under
+    `fs.protected_regular`.
 
 ## M3a. Logging and telemetry (`internal/logging`, `internal/telemetry`; spec §11)
 

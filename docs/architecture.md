@@ -88,6 +88,13 @@ wizard walks the steps, `doctor` runs only the checks, `--dry-run` prints the
 plans, and `uninstall` runs the undos in reverse. Every external command goes
 through one `Runner` interface, so tests can fake the whole machine.
 
+A root-owned manifest at `/var/lib/codecheck-sandbox/manifest.json` records each
+installed item as "created" or "adopted" (found already there). Uninstall undoes
+only created items, and only at paths inside the footprint's allowlist, so a
+tampered manifest cannot point it at other files. Setup, rebuild, uninstall and
+reviews share one `flock` on `/run/codecheck-sandbox/lock`, so two of them never
+change the footprint at once.
+
 Root steps show their commands and file contents before running, unless you pass
 `--yes`. The terminal hands over to `sudo -v` once for your password; after
 that, root commands run with `sudo -n`, so nothing can prompt behind the
