@@ -12,8 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
   logging and telemetry (#4) into `main`.
 - **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
-  its own worktree. `distro/osrelease.go` and `distro/packages.go` done; next
-  comes `platform/checks.go`.
+  its own worktree. Every M4 task done; next come the M4 review and pull
+  request, then M5 (pins and downloads) on a new branch once it merges.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -407,7 +407,7 @@ of repeating them.
     every package. A test checks every installable name against the manifest's
     package allowlist. Golden files: `go test ./internal/distro -update`
     rewrites them.
-- [ ] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
+- [x] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
       so it reports through the engine; checks that only read have `Apply`
       return "fix manually: …".
   - **CPU architecture:** x86_64 only; aarch64 gets a clear "deferred" message.
@@ -420,6 +420,17 @@ of repeating them.
   - **Security module:** SELinux or AppArmor, and its mode.
 
   **Tests:** each check against `MemFS` fixtures.
+
+  - _Done:_ nine checks with IDs `platform-*`, registered with telemetry. An
+    `Env` injects the filesystem, a `Stat` with owner and mode (which `MemFS`
+    cannot model), free space, the architecture and `LookPath`; `DefaultEnv`
+    reads the real host. `fcjail` doesn't exist yet in this phase, so the KVM
+    check needs a character device open to all, or to group `kvm` with read and
+    write. RAM accepts 7.5 GiB `MemTotal` and up, since "8 GB" machines report
+    less. Added a privilege-tool check from spec §7. `Inspect` returns the
+    firewall managers and security module for host setup and telemetry; on the
+    maintainer's machine it found ufw and Docker, and every check passed.
+    Failing read-only checks return `ErrManual` with a fix-it hint.
 
 ## M5. Pins and downloads (`internal/pins`, `internal/fetch`)
 

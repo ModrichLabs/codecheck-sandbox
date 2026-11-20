@@ -5,17 +5,20 @@ missing.
 
 ## Machine
 
-| Need                          | Why                                                            | How to check                                     |
-| ----------------------------- | -------------------------------------------------------------- | ------------------------------------------------ |
-| Linux on x86_64               | This project targets x86_64 first; aarch64 may follow          | `uname -m` prints `x86_64`                       |
-| KVM                           | Firecracker needs hardware virtualisation                      | `/dev/kvm` exists; enable VT-x/AMD-V in firmware |
-| systemd and cgroups v2        | VM lifetime, the proxy service, the tap device                 | `/sys/fs/cgroup/cgroup.controllers` exists       |
-| 8 GB RAM or more              | The host plus a 2–4 GB VM                                      | `free -g`                                        |
-| 10 GB free disk on `/var/lib` | Base image, guest image and per-run disks                      | `df -h /var/lib`                                 |
-| sudo, sudo-rs, doas or run0   | Setup installs packages, a network device and a firewall table | `sudo -v`                                        |
+| Need                          | Why                                                            | How to check                                                                               |
+| ----------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Linux on x86_64               | This project targets x86_64 first; aarch64 may follow          | `uname -m` prints `x86_64`                                                                 |
+| KVM                           | Firecracker needs hardware virtualisation                      | `/dev/kvm` exists, with group `kvm` and mode 0660 (or 0666); enable VT-x/AMD-V in firmware |
+| systemd and cgroups v2        | VM lifetime, the proxy service, the tap device                 | `/sys/fs/cgroup/cgroup.controllers` exists                                                 |
+| 8 GB RAM or more              | The host plus a 2–4 GB VM                                      | `free -g`                                                                                  |
+| 10 GB free disk on `/var/lib` | Base image, guest image and per-run disks                      | `df -h /var/lib`                                                                           |
+| sudo, sudo-rs, doas or run0   | Setup installs packages, a network device and a firewall table | `sudo -v`                                                                                  |
 
 Virtual machines and cloud instances work when they offer nested virtualisation,
 so `/dev/kvm` appears inside them.
+
+A machine with 8 GB fitted reports a little less to Linux, since the firmware
+and kernel keep some for themselves, so the memory check accepts 7.5 GiB and up.
 
 ## Packages
 
