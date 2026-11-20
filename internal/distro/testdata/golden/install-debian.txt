@@ -1,0 +1,2 @@
+apt-get update
+env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nftables e2fsprogs squashfs-tools git iproute2 gnupg

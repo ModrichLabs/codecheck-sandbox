@@ -12,7 +12,8 @@ _Updated 2026-11-20._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3) and M3a
   logging and telemetry (#4) into `main`.
 - **In progress:** M4, platform and distro, on branch `feat/platform-distro` in
-  its own worktree. `distro/osrelease.go` done; next comes `distro/packages.go`.
+  its own worktree. `distro/osrelease.go` and `distro/packages.go` done; next
+  comes `platform/checks.go`.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
 - **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
@@ -396,9 +397,16 @@ of repeating them.
     comes from the maintainer's machine; the others follow each release's
     published os-release, written from reference rather than copied from a
     running system.
-- [ ] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
+- [x] `distro/packages.go`: map the logical packages `nftables`, `e2fsprogs`,
       `squashfs-tools`, `git`, `iproute2` and `gnupg` to package names and an
       install argv for each family. Golden test of every family's argv.
+  - _Done:_ `InstallCommands` returns a list of argvs, since Debian runs
+    `apt-get update` first; it sets `DEBIAN_FRONTEND` through `env` because root
+    commands carry no `Env`. Arch uses `pacman -S --needed` without `-y`, to
+    avoid a partial upgrade. An unknown family returns `ErrUnknownFamily` naming
+    every package. A test checks every installable name against the manifest's
+    package allowlist. Golden files: `go test ./internal/distro -update`
+    rewrites them.
 - [ ] `platform/checks.go`. Each check below becomes a `Step` in phase Platform,
       so it reports through the engine; checks that only read have `Apply`
       return "fix manually: …".
