@@ -949,8 +949,23 @@ of repeating them.
     `Tidy` leaves only `result/` (and a build's disk); `RemoveRun` deletes the
     folder once the CLI has read it. **For M11:** read `result/`, then run
     `cc-launch clean <id>`.
-- [ ] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
+- [x] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
       else and exits with documented codes.
+  - _Done:_ three forms only: `cc-launch <id>` (the review or selftest the
+    config names), `cc-launch build <id>` (M10 asked for it here) and
+    `cc-launch clean <id>` (removes the run folder under the lock). Exit codes,
+    in the package comment: 0 done, 1 other, 2 usage, 3 busy, 4 a check refused,
+    5 boot failed, 6 timed out, 7 results failed, 8 environment (not root, no
+    `fcjail`, or `fcjail` with uid 0), 130 interrupted. `launch.Run` holds the
+    sequence: lock (2 s, then busy), verify, stage, boot in the scope, wait,
+    collect the disk, remove the jail, extract, tidy. An interruption (SIGINT,
+    SIGTERM, SIGHUP) kills the scope and cleans up; a stuck scope leaves the
+    jail in place. The VM's serial console goes to `cc-launch`'s stderr as a
+    real file descriptor (`Env.Console`), since a pipe from `os/exec` closes a
+    second after `systemd-run` returns while Firecracker keeps writing. The
+    existing import guard now covers `cc-launch` (two helpers checked). **For
+    M11:** stream `cc-launch`'s stderr for live status, and map its exit codes
+    to messages.
 - [ ] `assets/host/sudoers`:
       `%<user> ALL=(root) NOPASSWD: /usr/local/lib/codecheck-sandbox/bin/cc-launch`.
       `LauncherStep` installs the binary root-owned with mode 755, and validates

@@ -93,6 +93,11 @@ type Env struct {
 	// ResultUID and ResultGID own the copied results: the user who ran
 	// sudo (SUDO_UID and SUDO_GID).
 	ResultUID, ResultGID int
+
+	// Console receives the VM's serial output. Pass an *os.File: the VM
+	// inherits it directly and keeps writing after systemd-run returns,
+	// which a pipe from os/exec would not survive.
+	Console io.Writer
 }
 
 // Job describes a run that passed every check.
