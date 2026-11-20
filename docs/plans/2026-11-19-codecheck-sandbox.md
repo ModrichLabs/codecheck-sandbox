@@ -745,13 +745,31 @@ of repeating them.
     so the agent can't touch `/out` itself. **For M9:** attach drives in that
     order, and cap the copies off `/out`, since the guest caps nothing but the
     disk size.
-- [ ] `internal/guestinit/build.go`: as root, copy the base tree from the
+- [x] `internal/guestinit/build.go`: as root, copy the base tree from the
       squashfs onto the target disk (keeping owners, modes, setuid and links),
       add the inputs disk's files (`claude`, the plugin, `cc-claude`,
       `cc-selftest`, `cc-guestinit` itself, the CA via
       `update-ca-certificates`), create the `agent` user, and set git's
       `safe.directory`. **Tests:** against a temp-dir tree with fakes for the
       privileged calls.
+  - _Done:_ the squashfs lacks `cc-guestinit`, so **the build VM boots a
+    one-file initramfs** holding it as `/init` (as in spike S1) and mounts its
+    own disks: `vda` the squashfs (read-only), `vdb` config, `vdc` inputs
+    (`ro,nosuid,nodev,noexec,noload`), `vdd` the blank target. `CopyTree` keeps
+    owners, modes (chmod after chown, so setuid survives), symlinks, hard links,
+    device nodes and times, never follows or overwrites anything in the target
+    (`O_EXCL|O_NOFOLLOW`, proved by dropping the flags), and drops extended
+    attributes, so file capabilities go. Inputs land root-owned with fixed
+    modes: `claude`, `cc-claude` and `cc-selftest` in `/usr/local/bin`,
+    `cc-guestinit` in `/usr/local/sbin` (review VMs boot it with `init=`), the
+    CA in `/usr/local/share/ca-certificates/codecheck-sandbox.crt`, the plugin
+    (plain files and folders only) in `/opt/codecheck/plugin`. The target's own
+    `useradd` (uid 10001) and `update-ca-certificates` run chrooted with `/dev`
+    and `/proc` bound in. A marker, `/etc/codecheck-sandbox/build-complete`,
+    holds the run id. **Deviation:** `safe.directory` moves to `cc-claude`,
+    since `GIT_CONFIG_NOSYSTEM=1` ignores `/etc/gitconfig`. **For M10:** pack
+    the initramfs (a newc cpio of `/init`), lay out the inputs disk with those
+    names, check the marker with `debugfs` and hash the disk on the host.
 - [ ] `cmd/cc-guestinit/main.go`: static build (`CGO_ENABLED=0`); runs as PID 1,
       picks the mode, and always ends with `reboot(LINUX_REBOOT_CMD_RESTART)`,
       even after a panic (spike S1: power-off hangs). **Test:** mode dispatch
