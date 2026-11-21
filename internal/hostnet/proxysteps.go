@@ -30,18 +30,26 @@ const (
 // proxyBinary installs a root-owned copy of the running CLI, which the proxy
 // unit runs; a user-owned binary would let the user rewrite the proxy.
 func (d Deps) proxyBinary() step.Step {
-	dest := d.Config.ProxyBinary
-	self := func() (string, error) {
-		if d.Executable != nil {
-			return d.Executable()
-		}
-		return os.Executable()
+	return d.binaryStep(idProxyBinary, "Proxy binary ", d.Config.ProxyBinary, d.self, d.markProxyChanged)
+}
+
+// self names the running binary.
+func (d Deps) self() (string, error) {
+	if d.Executable != nil {
+		return d.Executable()
 	}
+	return os.Executable()
+}
+
+// binaryStep installs a root-owned copy of the binary source names at dest,
+// checked by hash; changed runs after each install.
+func (d Deps) binaryStep(id, title, dest string, source func() (string, error), changed func()) step.Step {
+	self := source
 	install := func(src string) system.Cmd {
 		return root("install", "-D", "-m", "0755", "-o", "root", "-g", "root", "-T", src, dest)
 	}
 	return hostStep{
-		id: idProxyBinary, title: "Proxy binary " + dest,
+		id: id, title: title + dest,
 		check: func(context.Context) (step.Status, error) {
 			src, err := self()
 			if err != nil {
@@ -49,7 +57,7 @@ func (d Deps) proxyBinary() step.Step {
 			}
 			want, err := d.FS.ReadFile(src)
 			if err != nil {
-				return step.Status{}, fmt.Errorf("reading the running binary: %w", err)
+				return step.Status{}, fmt.Errorf("reading %s: %w", src, err)
 			}
 			got, err := d.FS.ReadFile(dest)
 			if err != nil {
@@ -72,6 +80,9 @@ func (d Deps) proxyBinary() step.Step {
 			if err != nil {
 				return err
 			}
+			if !d.exists(src) {
+				return fmt.Errorf("%s: missing; it ships beside codecheck-sandbox", src)
+			}
 			// Note the folders install -D will create, top down.
 			var missing []string
 			for dir := path.Dir(dest); !d.exists(dir); dir = path.Dir(dir) {
@@ -82,12 +93,14 @@ func (d Deps) proxyBinary() step.Step {
 				return err
 			}
 			for _, dir := range missing {
-				d.record(step.Item{ID: idProxyBinary, Kind: step.KindDir, Path: dir, State: step.Created})
+				d.record(step.Item{ID: id, Kind: step.KindDir, Path: dir, State: step.Created})
 			}
 			if !existed {
-				d.record(step.Item{ID: idProxyBinary, Kind: step.KindFile, Path: dest, State: step.Created})
+				d.record(step.Item{ID: id, Kind: step.KindFile, Path: dest, State: step.Created})
 			}
-			d.markProxyChanged()
+			if changed != nil {
+				changed()
+			}
 			return d.relabel(ctx, dest)
 		},
 		undo: d.undoFiles,

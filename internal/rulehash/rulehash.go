@@ -1,4 +1,7 @@
-package hostnet
+// Package rulehash fingerprints the sandbox's nftables table, so setup can
+// record the rules it loaded and cc-launch can refuse to boot when they
+// changed. It stays free of telemetry, since cc-launch imports it.
+package rulehash
 
 import (
 	"context"
@@ -12,11 +15,11 @@ import (
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
 
-// HashRules returns the SHA-256 of a canonical form of `nft -j list table`
+// Hash returns the SHA-256 of a canonical form of `nft -j list table`
 // output: the metainfo object (nft's version) goes, every "handle" key goes
 // at any depth, and keys get sorted. Rule order stays, since it decides what
 // a packet meets first. cc-launch compares this hash before every VM.
-func HashRules(nftJSON []byte) (string, error) {
+func Hash(nftJSON []byte) (string, error) {
 	var doc map[string]any
 	if err := json.Unmarshal(nftJSON, &doc); err != nil {
 		return "", fmt.Errorf("reading nft JSON: %w", err)
@@ -68,14 +71,15 @@ func stripHandles(v any) any {
 	return v
 }
 
-// LiveRuleHash hashes the loaded table, read as root with nft's JSON output.
-func LiveRuleHash(ctx context.Context, r system.Runner, table string) (string, error) {
-	res, err := r.Run(ctx, system.Cmd{Name: "nft", Args: []string{"-j", "list", "table", "inet", table}, Root: true})
+// Live hashes the loaded table, read with nft's JSON output. root asks for
+// the privilege tool; cc-launch, already root, passes false.
+func Live(ctx context.Context, r system.Runner, table string, root bool) (string, error) {
+	res, err := r.Run(ctx, system.Cmd{Name: "nft", Args: []string{"-j", "list", "table", "inet", table}, Root: root, CleanEnv: true})
 	if err != nil {
 		return "", err
 	}
 	if res.Code != 0 {
 		return "", fmt.Errorf("nft list table inet %s: %s", table, strings.TrimSpace(string(res.Stderr)))
 	}
-	return HashRules(res.Stdout)
+	return Hash(res.Stdout)
 }

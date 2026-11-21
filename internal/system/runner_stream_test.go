@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -42,6 +43,29 @@ func TestRedactingRunnerRedactsStreamedStderr(t *testing.T) {
 	}
 	if strings.Contains(errOut.String(), testKey) || !strings.Contains(errOut.String(), "bad key") {
 		t.Errorf("streamed stderr = %q, want it redacted", errOut.String())
+	}
+}
+
+func TestExecRunnerReadsStdinFromAFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "in")
+	if err := os.WriteFile(p, []byte("from a file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	res := runOK(t, Cmd{Name: "cat", StdinFile: f})
+	if string(res.Stdout) != "from a file" {
+		t.Errorf("stdout = %q", res.Stdout)
+	}
+}
+
+func TestPrivRunnerRefusesAStdinFile(t *testing.T) {
+	p := PrivRunner{Inner: &FakeRunner{}, Tool: Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}}
+	if _, err := p.Run(context.Background(), Cmd{Name: "true", Root: true, StdinFile: os.Stdin}); err == nil {
+		t.Error("PrivRunner accepted a root command it can't honour")
 	}
 }
 

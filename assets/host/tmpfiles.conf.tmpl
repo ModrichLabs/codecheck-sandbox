@@ -1,0 +1,4 @@
+# codecheck-sandbox: cc-launch's lock, so only one sandbox VM runs at a time.
+# Written by `codecheck-sandbox setup`; `codecheck-sandbox uninstall` removes it.
+d {{.LockDir}} 0755 root root -
+f {{.LockPath}} 0644 root root -

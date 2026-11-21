@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/ModrichLabs/codecheck-sandbox/internal/rulehash"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/telemetry"
@@ -31,6 +32,9 @@ type Deps struct {
 	// Executable names the running binary, which the proxy step installs;
 	// nil means os.Executable.
 	Executable func() (string, error)
+	// User names the account the sudo rule lets run cc-launch: the person
+	// running setup.
+	User string
 
 	// proxyChanged notes that a step replaced something the running proxy
 	// loaded at start (its binary, CA or key), so the service must restart.
@@ -67,7 +71,7 @@ const (
 
 func init() {
 	telemetry.RegisterStepIDs(idJailUser, idJailerBase, idRules, idNM, idTap, idFirewalld, idUfw, idSELinux,
-		idProxyBinary, idProxyCA, idAPIKey, idProxyService)
+		idProxyBinary, idProxyCA, idAPIKey, idProxyService, idLauncher, idLock, idSudoers)
 }
 
 // Steps returns the host phase in order: the rules load before the tap
@@ -94,6 +98,7 @@ func Steps(d Deps) ([]step.Step, error) {
 		d.jailUser(), d.jailerBase(), d.rules(), d.nmUnmanaged(),
 		d.tapService(), d.firewalld(), d.ufw(),
 		d.proxyBinary(), d.proxyCA(), d.apiKey(), d.proxyService(),
+		d.launcher(), d.lock(), d.sudoers(),
 		d.selinux(), // last, so it labels everything above
 	}, nil
 }
@@ -322,7 +327,7 @@ func (d Deps) rules() step.Step {
 			if err != nil {
 				return fail("no recorded rule hash at " + c.HashPath)
 			}
-			live, err := LiveRuleHash(ctx, d.Runner, c.Table)
+			live, err := rulehash.Live(ctx, d.Runner, c.Table, true)
 			if errors.Is(err, system.ErrLoginExpired) {
 				return step.Status{}, err
 			}
@@ -364,7 +369,7 @@ func (d Deps) rules() step.Step {
 			d.record(step.Item{ID: idRules, Kind: step.KindNetwork, Name: table, State: step.Created})
 			// Hash the table as loaded here, since nft's JSON can differ
 			// between versions.
-			live, err := LiveRuleHash(ctx, d.Runner, c.Table)
+			live, err := rulehash.Live(ctx, d.Runner, c.Table, true)
 			if err != nil {
 				return err
 			}

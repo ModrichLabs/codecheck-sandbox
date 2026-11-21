@@ -11,14 +11,22 @@ _Updated 2026-11-21._
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
-  (#7), M6 host network (#9) and M7 egress proxy (#10) into `main`.
-- **In progress:** M8, guest init and assets, on branch `feat/guest-init` in its
-  own worktree. Every M8 task done; `/code-review medium` found 6 issues, all
-  fixed (unmount `/out` before the reboot, port range in `Encode`, folder times,
-  a code disk for selftests, redaction of streamed stderr, `no_output` probes).
-  Next: the M8 pull request, then M9 (launch helper) once it merges. The
-  maintainer chose (2026-11-21) to have the host precompute diff-mode changes,
-  so Claude gets no Bash at all (spec amendment 9).
+  (#7), M6 host network (#9), M7 egress proxy (#10) and M8 guest init (#11) into
+  `main`. Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes,
+  so Claude gets no Bash at all.
+- **In progress:** M9, launch helper, on branch `feat/launch-helper` in its own
+  worktree. Every M9 task done. `/code-review medium` and a background security
+  review found 7 issues, all fixed test-first: two symlink races where root
+  chowned or chmodded by a path the user or `fcjail` controlled (now through
+  descriptors, with the result folder handed over last); systemd's
+  `RuntimeMaxSec` firing before `Wait`'s kill, so timeouts looked like successes
+  (now `Wait` kills at the limit and the scope's limit adds a tenth as a
+  backstop); `debugfs` open failures read as missing files (only "File not
+  found" now means missing, and root hands `debugfs` the disk as `/dev/stdin`);
+  cleanup after a failed stop; a timed-out build reported as a results failure;
+  `nft` without `CleanEnv`. Next: the M9 pull request, then M10 (guest build)
+  once it merges. Untested until a real boot (M15): `--parent-cgroup` inside the
+  scope.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -857,11 +865,19 @@ of repeating them.
 
 ## M9. Launch helper (`cmd/cc-launch`, `internal/launch`)
 
-- [ ] `launch/runid.go`: run ids must match
+- [x] `launch/runid.go`: run ids must match
       `^cc-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$`. The run folder sits at
       `/var/lib/codecheck-sandbox/runs/<id>`, and only the CLI writes there,
       through `sudo tee`. **Tests:** valid and invalid ids, and path traversal.
-- [ ] `launch/verify.go`, in order:
+  - _Done:_ a `RunID` type that only `ParseRunID` and `NewRunID` (UTC time plus
+    six random characters) make, and `launch.Paths` with every fixed path in one
+    place: the binaries in `/usr/local/lib/codecheck-sandbox/bin/`
+    (`firecracker`, `jailer`), the kernel and root disk as
+    `/var/lib/codecheck-sandbox/{vmlinux,rootfs.ext4}`. First, a refactor:
+    `hostnet`'s rule hash moved to `internal/rulehash`, since `hostnet` imports
+    telemetry and `cc-launch` must not; `rulehash.Live` takes a `root` switch.
+    **For M10/M11:** make run ids with `launch.NewRunID`.
+- [x] `launch/verify.go`, in order:
   1. the lock
   2. the kernel and root disk SHA-256 against
      `/var/lib/codecheck-sandbox/images.sha256`
@@ -873,7 +889,28 @@ of repeating them.
 
   **Tests:** each failure path, using `MemFS` and `FakeRunner`.
 
-- [ ] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
+  - _Done:_ `Verify(ctx, env, id, build)` returns a `Job` or a `CheckError`
+    naming the check (`binaries`, `image-hash`, `rule-hash`, `proxy-owner`,
+    `run-disks`); the lock stays with the caller (the command task). It first
+    checks that `firecracker` and `jailer` are plain, root-owned files no one
+    else can write. `images.sha256` must list exactly the kernel and root disk
+    (absolute paths, `sha256sum` format). The proxy check takes every LISTEN
+    entry in `/proc/net/tcp` and `tcp6` that covers `172.16.0.1:3180` (wildcards
+    included), wants exactly one, and needs every pid holding it in
+    `0::/system.slice/codecheck-proxy.service`; checked against this host's real
+    `/proc`. The run folder must hold exactly `config.img` (a block for this run
+    id, mode matching the request) and the mode's disks, each root-owned, plain,
+    within its cap and with its magic number: `code.ext4` (≤ 16 GiB) for reviews
+    and selftests; `vmlinux`, `init.cpio`, `base.squashfs` and `inputs.ext4` for
+    builds, which skip the image, rule and proxy checks (no image yet, no
+    network). **Deviation:** tests use real files in a temp folder (owners,
+    symlinks, sizes and magic need them) and a fake `/proc`, not `MemFS`. A
+    `hostnet` test keeps `launch`'s copies of the proxy address, unit, table and
+    paths in step with `hostnet.DefaultConfig`. **For M10:** write
+    `images.sha256` in that format; **for M11:** fill the run folder with
+    exactly those files.
+
+- [x] `launch/jail.go`: stage the chroot with read-only bind mounts (shared
       images) and copies (run disks), then build the
       `systemd-run --scope -p RuntimeMaxSec=… jailer …` argv from the spike S1
       flags. **Golden test** of the argv.
@@ -881,16 +918,84 @@ of repeating them.
     `cgroup.events` to show `populated 0` before cleanup (spike S1, option b).
     **Test:** cleanup never starts while the fake cgroup still reports
     `populated 1`.
-- [ ] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
+  - _Done:_ `Stage` refuses a jail folder that already exists, binds the
+    installed kernel and root disk read-only (bind, then remount
+    `ro,nosuid,nodev,noexec`), copies `config.img` and `code.ext4` (or the
+    build's four inputs) at 0444, and makes the writable disk itself: a sparse
+    `out.ext4` (512 MiB) or build target `rootfs.ext4` (3 GiB), `mkfs.ext4`,
+    owned by `fcjail`, 0600. So the CLI never uploads an output disk (a change
+    from M11's `disks.go`). `vm.json` comes from `guestinit.RenderVM`. Each mode
+    has fixed vCPUs, memory and a time limit (review 60 min, selftest 10, build
+    30). The argv adds `--unit=codecheck-<id>`, `--slice=system.slice`,
+    `--collect`, and `--parent-cgroup system.slice/codecheck-<id>.scope`, so
+    Firecracker's cgroup sits inside the scope that `RuntimeMaxSec` kills and
+    `Wait` watches; `fsize` matches the writable disk. `Wait` treats a vanished
+    scope as empty, kills the scope with `systemctl kill --signal=SIGKILL` past
+    the limit plus a tenth, and returns `ErrTimeout`, or also `ErrStuck` if it
+    stays populated 30 s after the kill (the first test run hung on that case).
+    `Cleanup` unmounts the binds and removes the jail only when
+    `/proc/self/mountinfo` shows no mount left inside it. **Untested on a real
+    host:** `--parent-cgroup` inside a scope (spike S1 finding 8 left it open);
+    **for M15:** boot a VM and check `systemd-cgls` before trusting it.
+- [x] `launch/extract.go`: for each file in a fixed list (`transcript.jsonl`
       capped at 200 MB, `stderr.log` at 5 MB, `exit-code` at 16 bytes),
       `debugfs -R "cat /<f>"`, run as `nobody` through `setpriv`. Then clean up
       the chroot and the run folder. **Tests:** caps and the file list.
-- [ ] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
+  - _Done:_ the guest's names win: `stream.jsonl` (not `transcript.jsonl`),
+    `stderr.log`, `exit-code`. `CollectOutDisk` moves the writable disk out of
+    the jail into the run folder (root-owned, 0444; copies across filesystems),
+    so the jail can go. `Extract` runs
+    `setpriv --reuid=65534 --regid=65534 --clear-groups --no-new-privs --inh-caps=-all --bounding-set=-all -- debugfs -R "cat /<f>"`
+    into `runs/<id>/result/` (0700, owned by `SUDO_UID`/`SUDO_GID`; files 0600,
+    created `O_EXCL|O_NOFOLLOW`). `debugfs` exits 0 for a missing file and says
+    so on stderr after its version banner (checked against e2fsprogs 1.47.4), so
+    any other stderr line means "missing", and the file stays absent. A file
+    over its cap gets deleted and reported as `ErrTooLarge`; past the cap
+    `debugfs` dies of SIGPIPE, which a test checks against a real process. A
+    build instead needs `/etc/codecheck-sandbox/build-complete` to hold the run
+    id (`ErrBuildIncomplete`) and keeps `rootfs.ext4` in the run folder for M10.
+    `Tidy` leaves only `result/` (and a build's disk); `RemoveRun` deletes the
+    folder once the CLI has read it. **For M11:** read `result/`, then run
+    `cc-launch clean <id>`.
+- [x] `cmd/cc-launch/main.go`: a single positional run id; it refuses anything
       else and exits with documented codes.
-- [ ] `assets/host/sudoers`:
+  - _Done:_ three forms only: `cc-launch <id>` (the review or selftest the
+    config names), `cc-launch build <id>` (M10 asked for it here) and
+    `cc-launch clean <id>` (removes the run folder under the lock). Exit codes,
+    in the package comment: 0 done, 1 other, 2 usage, 3 busy, 4 a check refused,
+    5 boot failed, 6 timed out, 7 results failed, 8 environment (not root, no
+    `fcjail`, or `fcjail` with uid 0), 130 interrupted. `launch.Run` holds the
+    sequence: lock (2 s, then busy), verify, stage, boot in the scope, wait,
+    collect the disk, remove the jail, extract, tidy. An interruption (SIGINT,
+    SIGTERM, SIGHUP) kills the scope and cleans up; a stuck scope leaves the
+    jail in place. The VM's serial console goes to `cc-launch`'s stderr as a
+    real file descriptor (`Env.Console`), since a pipe from `os/exec` closes a
+    second after `systemd-run` returns while Firecracker keeps writing. The
+    existing import guard now covers `cc-launch` (two helpers checked). **For
+    M11:** stream `cc-launch`'s stderr for live status, and map its exit codes
+    to messages.
+- [x] `assets/host/sudoers`:
       `%<user> ALL=(root) NOPASSWD: /usr/local/lib/codecheck-sandbox/bin/cc-launch`.
       `LauncherStep` installs the binary root-owned with mode 755, and validates
       the sudoers file with `visudo -cf` before moving it into place.
+  - _Done:_ three `hostnet` steps before `host-selinux`. `host-launcher`
+    installs `cc-launch` from beside the running CLI binary through a
+    `binaryStep` helper now shared with `host-proxy-binary` (hash check,
+    recorded folders, relabel). `host-lock` writes
+    `/etc/tmpfiles.d/codecheck-sandbox.conf` (`d /run/codecheck-sandbox 0755`,
+    `f …/lock 0644`, root) and runs `systemd-tmpfiles --create`, settling M3's
+    note; checked with a user-level `systemd-tmpfiles` run. `host-sudoers`
+    renders `assets/host/sudoers.tmpl` as
+    `<user> ALL=(root) NOPASSWD: …/bin/cc-launch` (a user, not the plan's `%`
+    group), writes it to `codecheck-sandbox.new` (sudo ignores names with a
+    dot), runs `visudo -cf`, then `mv -f -T` into place, or removes the draft on
+    failure. A test runs the real `visudo -cf` on the rendered rule; a broken
+    rule fails it. `Deps.User` must match the plain account pattern and not be
+    root. The manifest allows the tmpfiles entry and `/run/codecheck-sandbox`;
+    spec §3 lists them. Only sudo and sudo-rs read the drop-in: doas and run0
+    users get a prompt per run. **For M13:** set `Deps.User` from the invoking
+    account. **For M15:** release archives must ship `cc-launch` beside
+    `codecheck-sandbox`.
 
 ## M10. Guest build (`internal/guest`)
 

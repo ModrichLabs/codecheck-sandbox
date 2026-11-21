@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ModrichLabs/codecheck-sandbox/internal/rulehash"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/telemetry"
@@ -30,6 +31,7 @@ func (r *rig) deps() Deps {
 		Record:     func(it step.Item) { r.records = append(r.records, it) },
 		APIKey:     func() (string, error) { return r.apiKey, nil },
 		Executable: func() (string, error) { return "/home/u/bin/codecheck-sandbox", nil },
+		User:       "u",
 	}
 }
 
@@ -109,7 +111,8 @@ func wantArgvs(t *testing.T, r *rig, want ...string) {
 func TestStepsOrderPhaseAndTelemetry(t *testing.T) {
 	want := []string{"host-jail-user", "host-jailer-base", "host-rules", "host-nm-unmanaged",
 		"host-tap-service", "host-firewalld", "host-ufw",
-		"host-proxy-binary", "host-proxy-ca", "host-api-key", "host-proxy-service", "host-selinux"}
+		"host-proxy-binary", "host-proxy-ca", "host-api-key", "host-proxy-service",
+		"host-launcher", "host-lock", "host-sudoers", "host-selinux"}
 	var got []string
 	steps, _ := Steps(newRig().deps())
 	for _, s := range steps {
@@ -202,7 +205,7 @@ func TestJailerBaseStep(t *testing.T) {
 }
 
 func TestRulesStepCheck(t *testing.T) {
-	live, _ := HashRules(fixture(t))
+	live, _ := rulehash.Hash(fixture(t))
 	healthy := func() *rig {
 		r := newRig()
 		r.write(t, "/etc/codecheck-sandbox/rules.nft", rendered(t, "rules.nft"), 0o644)
@@ -238,7 +241,7 @@ func TestRulesStepCheck(t *testing.T) {
 
 func TestRulesStepApplyRecordsTheLiveHash(t *testing.T) {
 	r := newRig()
-	live, _ := HashRules(fixture(t))
+	live, _ := rulehash.Hash(fixture(t))
 	r.run.On("install", "-d").Return(ok(0))
 	r.run.On("install", "-d").Return(ok(0))
 	r.run.On("install", "-m").Return(ok(0))
