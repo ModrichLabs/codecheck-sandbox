@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path"
@@ -64,6 +65,21 @@ func (n NpmBinary) Fetch(ctx context.Context, dest string) error {
 }
 
 func (n NpmBinary) extract(tgz, dest string) error {
+	return extractMembers(tgz, []member{{name: n.Member, sha: n.BinarySHA256, max: n.MaxBytes, dest: dest}})
+}
+
+// member names one file to take from a tarball.
+type member struct {
+	name, sha string
+	max       int64
+	dest      string
+}
+
+// extractMembers takes each member out of a .tgz into its dest with mode
+// 0755. It refuses the whole tarball on any unsafe entry, and moves the
+// members into place only once every one has passed its size cap and
+// SHA-256, so a bad tarball leaves every dest untouched.
+func extractMembers(tgz string, want []member) error {
 	f, err := os.Open(tgz)
 	if err != nil {
 		return err
@@ -73,20 +89,25 @@ func (n NpmBinary) extract(tgz, dest string) error {
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", filepath.Base(tgz), err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".part-*")
-	if err != nil {
-		return err
-	}
-	keep := false
+
+	tmps := make([]*os.File, len(want))
 	defer func() {
-		if !keep {
-			tmp.Close()
-			os.Remove(tmp.Name())
+		for _, t := range tmps {
+			if t != nil {
+				t.Close()
+				os.Remove(t.Name())
+			}
 		}
 	}()
+	hashes := make([]hash.Hash, len(want))
+	for i, m := range want {
+		if tmps[i], err = os.CreateTemp(filepath.Dir(m.dest), "."+filepath.Base(m.dest)+".part-*"); err != nil {
+			return err
+		}
+		hashes[i] = sha256.New()
+	}
 
-	h := sha256.New()
-	found := false
+	found := make([]bool, len(want))
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -99,40 +120,43 @@ func (n NpmBinary) extract(tgz, dest string) error {
 		if err := safeEntry(hdr); err != nil {
 			return err
 		}
-		if hdr.Name != n.Member {
+		i := slices.IndexFunc(want, func(m member) bool { return m.name == hdr.Name })
+		if i < 0 {
 			continue
 		}
-		if found {
-			return fmt.Errorf("tarball holds %s twice", n.Member)
+		if found[i] {
+			return fmt.Errorf("tarball holds %s twice", hdr.Name)
 		}
-		found = true
-		written, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(tr, n.MaxBytes+1))
+		found[i] = true
+		written, err := io.Copy(io.MultiWriter(tmps[i], hashes[i]), io.LimitReader(tr, want[i].max+1))
 		if err != nil {
 			return err
 		}
-		if written > n.MaxBytes {
-			return fmt.Errorf("%s: %w (%d bytes)", n.Member, ErrTooLarge, n.MaxBytes)
+		if written > want[i].max {
+			return fmt.Errorf("%s: %w (%d bytes)", hdr.Name, ErrTooLarge, want[i].max)
 		}
 	}
-	if !found {
-		return fmt.Errorf("tarball holds no %s", n.Member)
+	for i, m := range want {
+		if !found[i] {
+			return fmt.Errorf("tarball holds no %s", m.name)
+		}
+		if got := hex.EncodeToString(hashes[i].Sum(nil)); got != m.sha {
+			return fmt.Errorf("%s: %w: got %s, want %s", m.name, ErrHashMismatch, got, m.sha)
+		}
+		if err := tmps[i].Sync(); err != nil {
+			return err
+		}
+		if err := tmps[i].Chmod(0o755); err != nil {
+			return err
+		}
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != n.BinarySHA256 {
-		return fmt.Errorf("%s: %w: got %s, want %s", n.Member, ErrHashMismatch, got, n.BinarySHA256)
+	for i, m := range want {
+		if err := os.Rename(tmps[i].Name(), m.dest); err != nil {
+			return err
+		}
+		tmps[i].Close()
+		tmps[i] = nil
 	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp.Name(), dest); err != nil {
-		return err
-	}
-	keep = true
 	return nil
 }
 

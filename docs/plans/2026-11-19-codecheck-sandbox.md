@@ -1018,6 +1018,29 @@ of repeating them.
 - [ ] `GuestBuildStep`, whose `Check` passes when the image hashes match and the
       pins have not changed since the last build.
 
+Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
+`cc-launch` refuses to boot without them):
+
+- [x] **Firecracker binaries:** pin the SHA-256 of `firecracker` and `jailer`
+      themselves (taken from the release's own `SHA256SUMS`, inside the pinned
+      tarball), and `fetch.FirecrackerRelease` takes just those two members out
+      of the tarball, sharing the npm tarball's safe extraction.
+  - _Done:_ `pins.Firecracker` gains `FirecrackerSHA256` and `JailerSHA256`,
+    checked against the release's `SHA256SUMS`. `extractMembers` replaces the
+    npm tarball's single-file extraction: it refuses the whole tarball on any
+    unsafe entry, caps and hashes each member, and moves them into place only
+    once all pass. A throwaway test fetched the real v1.18.0 release through it.
+- [ ] **Initramfs** (`guest/initramfs.go`): a newc cpio holding `/init`
+      (`cc-guestinit`) and `/dev/console`, so the builder's serial log shows.
+- [ ] **Inputs disk** (`guest/inputs.go`): lay out the names `guestinit.Build`
+      expects, then `mkfs.ext4 -d` as the user.
+- [ ] **Launch client** (`launch/client.go`): run `cc-launch` through the
+      privilege tool with its console streamed and its exit code kept; M11
+      reuses it.
+- [ ] **Build** (`guest/build.go`): the four steps above, plus installing the
+      images, `images.sha256` and a build stamp, then `cc-launch clean`.
+- [ ] **Steps** (`guest/steps.go`): `guest-firecracker` and `guest-image`.
+
 ## M11. Review pipeline (`internal/review`)
 
 - [ ] `review/source.go`:
