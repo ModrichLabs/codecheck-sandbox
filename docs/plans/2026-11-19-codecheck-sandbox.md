@@ -1213,8 +1213,19 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     (colour codes stripped), and teatest drives the key-press flows; raw teatest
     output records the renderer's escape sequences, which would break on any
     renderer change.
-- [ ] `tui/app.go`: the root model that routes engine events to screens. Quit
+- [x] `tui/app.go`: the root model that routes engine events to screens. Quit
       through `q` or Ctrl-C asks for confirmation during root steps.
+  - _Done:_ `tui.New(Config)` takes the title, theme, sidebar entries, the
+    ordered steps and a `RunFunc` (a closure over `step.Run`; the `App` fills in
+    `Events`, and later `Confirm` and `Elevate`). The engine runs on its own
+    goroutine; **one listener** at a time reads the next event or the run's end,
+    and since the engine blocks on each event until read, every event reaches
+    `Update` before the run's end does. "Root step" means the current step's
+    plan says `NeedsRoot` and it hasn't finished; quitting then asks first,
+    otherwise it quits at once. Quitting cancels the engine's context and leaves
+    `ErrQuit` in `Err()`. Tests run the model through a small synchronous
+    harness (each Cmd on a goroutine, its message back through `Update`), so
+    they can inspect the model between messages.
 - [ ] `tui/sidebar.go`, `tui/steplist.go`, `tui/confirm.go` (commands, the `d`
       key opens a viewport of files, Enter, `s`, `q`), `tui/progress.go`,
       `tui/failure.go` (cause, fix, `r` retry). Each gets a `teatest` golden
