@@ -49,10 +49,12 @@ _Updated 2026-11-22._
   `charm.land/log/v2` v2.0.1, `posthog-go` v1.40.1, and M12's Charm set
   (bubbletea v2.1.1, bubbles v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour
   v2.0.1, teatest v2 at `c83711a`).
-- **Waiting on the maintainer:** sign-off on the telemetry consent screen's
-  wording and layout (`internal/tui/testdata/consent.golden`) before M13 wires
-  it into `setup`; and whether to keep the VM size question, which needs
-  `cc-launch` to read a root-owned size setting before it changes anything.
+- **Consent screen:** the maintainer approved its wording and layout
+  (`internal/tui/testdata/consent.golden`) on 2026-11-22; M13 wires it into
+  `setup` as it stands.
+- **Waiting on the maintainer:** whether to keep the VM size question, which
+  needs `cc-launch` to read a root-owned size setting before it changes
+  anything; `--prompt`/`--cwe`; and the kernel mirror.
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1299,12 +1301,11 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `telemetry.Payload`, the function `Capture` now uses itself, so the screen
     matches what gets queued. A test checks that `Payload` matches the queue,
     and the sample's step ID stays tied to a real host step through a `hostnet`
-    test. **Waiting on the maintainer:** the consent wording and layout
-    (`internal/tui/testdata/consent.golden`) need sign-off before M13 wires them
-    into `setup`. **For M13:** `cc-launch` fixes each mode's VM shape, so the VM
-    size answer changes nothing until `cc-launch` reads it from a root-owned
-    setting; keep it, or drop the field. `FormDeps.Home` must hold the user's
-    home folder.
+    test. **Approved 2026-11-22:** the maintainer signed off the consent wording
+    and layout (`internal/tui/testdata/consent.golden`). **For M13:**
+    `cc-launch` fixes each mode's VM shape, so the VM size answer changes
+    nothing until `cc-launch` reads it from a root-owned setting; keep it, or
+    drop the field. `FormDeps.Home` must hold the user's home folder.
 - [x] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
       Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
   - _Done:_ **`DoctorView(theme, rows, width)`** prints a Lip Gloss table
