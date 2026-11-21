@@ -5,7 +5,10 @@ package review
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
@@ -36,7 +39,22 @@ func git(ctx context.Context, r system.Runner, allowFile bool, args ...string) (
 		return nil, err
 	}
 	if res.Code != 0 {
-		return nil, fmt.Errorf("git %s: exit %d: %s", strings.Join(args, " "), res.Code, strings.TrimSpace(string(res.Stderr)))
+		msg := fmt.Sprintf("git %s: exit %d: %s", strings.Join(args, " "), res.Code, strings.TrimSpace(string(res.Stderr)))
+		return nil, errors.New(urlUserinfo.ReplaceAllString(msg, "://"))
 	}
 	return res.Stdout, nil
+}
+
+// urlUserinfo matches the user part of a URL, which can hold a token.
+var urlUserinfo = regexp.MustCompile(`://[^/@\s'"]+@`)
+
+// DisplayTarget gives the target fit to show or store: a URL loses any
+// user and token; a path stays as it is.
+func DisplayTarget(t string) string {
+	u, err := url.Parse(t)
+	if err != nil || u.Scheme == "" {
+		return t
+	}
+	u.User = nil
+	return u.String()
 }

@@ -43,7 +43,7 @@ var (
 // Prepare clones the target afresh into a new work folder under workRoot,
 // checks out the pull request if one is named, works out the baseline for a
 // diff review, hardens the clone, and writes the change files.
-func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, now time.Time) (Prepared, error) {
+func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, now time.Time) (_ Prepared, err error) {
 	local, err := checkTarget(s.Target)
 	if err != nil {
 		return Prepared{}, err
@@ -65,12 +65,23 @@ func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, no
 	if err := os.Mkdir(p.Dir, 0o700); err != nil {
 		return Prepared{}, err
 	}
+	// A failure leaves nothing behind: the clone may still hold its remote,
+	// whose URL can carry a token, until Harden runs.
+	dir := p.Dir
+	defer func() {
+		if err != nil {
+			os.RemoveAll(dir)
+		}
+	}()
 	if err := os.Mkdir(filepath.Join(p.Dir, "code"), 0o755); err != nil {
 		return Prepared{}, err
 	}
 	p.Clone = filepath.Join(p.Dir, "code", "src")
+	raw := func(args ...string) ([]byte, error) {
+		return git(ctx, r, local, append([]string{"-C", p.Clone}, args...)...)
+	}
 	g := func(args ...string) (string, error) {
-		out, err := git(ctx, r, local, append([]string{"-C", p.Clone}, args...)...)
+		out, err := raw(args...)
 		return strings.TrimSpace(string(out)), err
 	}
 
@@ -112,16 +123,18 @@ func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, no
 	if err := os.Mkdir(p.Change, 0o755); err != nil {
 		return Prepared{}, err
 	}
-	diff, err := g("diff", "--no-ext-diff", "--no-textconv", "--no-color", p.Base)
+	// Raw output: trimming would drop a porcelain line's leading space or a
+	// patch's last blank context line.
+	diff, err := raw("diff", "--no-ext-diff", "--no-textconv", "--no-color", p.Base)
 	if err != nil {
 		return Prepared{}, err
 	}
-	status, err := g("status", "--porcelain")
+	status, err := raw("status", "--porcelain")
 	if err != nil {
 		return Prepared{}, err
 	}
-	for name, body := range map[string]string{"diff.patch": diff, "status.txt": status} {
-		if err := os.WriteFile(filepath.Join(p.Change, name), []byte(body+"\n"), 0o644); err != nil {
+	for name, body := range map[string][]byte{"diff.patch": diff, "status.txt": status} {
+		if err := os.WriteFile(filepath.Join(p.Change, name), body, 0o644); err != nil {
 			return Prepared{}, err
 		}
 	}

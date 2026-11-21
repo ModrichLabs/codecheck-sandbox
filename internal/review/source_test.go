@@ -123,6 +123,51 @@ func TestPrepareRefusesBadSources(t *testing.T) {
 	}
 }
 
+func TestPrepareRemovesTheWorkFolderOnFailure(t *testing.T) {
+	work := t.TempDir()
+	if _, err := Prepare(context.Background(), system.ExecRunner{}, work, Source{Target: repo(t, ""), PR: 99}, now); err == nil {
+		t.Fatal("Prepare found pull request 99")
+	}
+	if entries, _ := os.ReadDir(work); len(entries) != 0 {
+		t.Errorf("a failed preparation left %v behind", entries)
+	}
+}
+
+func TestATokenInTheURLStaysOutOfErrorsAndReports(t *testing.T) {
+	target := "https://x-access-token:ghp_secret123@127.0.0.1:1/org/repo"
+	_, err := Prepare(context.Background(), system.ExecRunner{}, t.TempDir(), Source{Target: target}, now)
+	if err == nil {
+		t.Fatal("Prepare cloned from a closed port")
+	}
+	if strings.Contains(err.Error(), "ghp_secret123") {
+		t.Errorf("the error shows the token: %v", err)
+	}
+	if got := DisplayTarget(target); got != "https://127.0.0.1:1/org/repo" {
+		t.Errorf("DisplayTarget = %q", got)
+	}
+	if got := DisplayTarget("/home/u/src/app"); got != "/home/u/src/app" {
+		t.Errorf("DisplayTarget changed a path: %q", got)
+	}
+}
+
+func TestDiffKeepsGitsOutputExactly(t *testing.T) {
+	src := repo(t, "")
+	commitFile(t, src, "notes.txt", "a\nb\n\n", "notes")
+	gitT(t, src, "checkout", "-q", "-b", "feature")
+	commitFile(t, src, "notes.txt", "A\nb\n\n", "change the first line")
+	p, err := Prepare(context.Background(), system.ExecRunner{}, t.TempDir(), Source{Target: src, Base: "main"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(p.Change, "diff.patch"))
+	res, _ := system.ExecRunner{}.Run(context.Background(), system.Cmd{Name: "git",
+		Args: []string{"-C", p.Clone, "diff", "--no-ext-diff", "--no-textconv", "--no-color", p.Base}, CleanEnv: true,
+		Env: []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}})
+	if string(got) != string(res.Stdout) {
+		t.Errorf("diff.patch differs from git's output:\n%q\nwant\n%q", got, res.Stdout)
+	}
+}
+
 func TestNameFromTarget(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://github.com/org/My-Repo.git": "my-repo",

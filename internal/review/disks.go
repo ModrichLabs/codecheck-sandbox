@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/guestinit"
@@ -29,13 +30,13 @@ func MakeRunFiles(ctx context.Context, r system.Runner, dir, codeDir string, cfg
 	if err := os.MkdirAll(filepath.Join(codeDir, "src"), 0o755); err != nil {
 		return err
 	}
-	files, err := treeBytes(codeDir)
+	blocks, entries, err := treeUsage(codeDir)
 	if err != nil {
 		return err
 	}
-	size := codeDiskSize(files)
+	size := codeDiskSize(blocks, entries)
 	if size > launch.MaxCodeDisk {
-		return fmt.Errorf("the code takes %d MiB, past the %d MiB a code disk may hold", files>>20, launch.MaxCodeDisk>>20)
+		return fmt.Errorf("the code needs a %d MiB disk, past the %d MiB a code disk may hold", size>>20, launch.MaxCodeDisk>>20)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "config.img"), block, 0o644); err != nil {
 		return err
@@ -59,7 +60,10 @@ func MakeRunFiles(ctx context.Context, r system.Runner, dir, codeDir string, cfg
 	if err != nil {
 		return err
 	}
-	res, err := r.Run(ctx, system.Cmd{Name: mkfs, Args: []string{"-q", "-F", "-L", "cc-code", "-d", codeDir, disk}, CleanEnv: true})
+	// An inode for every entry, with room to spare: small filesystems get few
+	// by default.
+	inodes := strconv.FormatInt(entries+entries/4+1024, 10)
+	res, err := r.Run(ctx, system.Cmd{Name: mkfs, Args: []string{"-q", "-F", "-L", "cc-code", "-b", "4096", "-N", inodes, "-d", codeDir, disk}, CleanEnv: true})
 	if err != nil {
 		return err
 	}
@@ -69,25 +73,30 @@ func MakeRunFiles(ctx context.Context, r system.Runner, dir, codeDir string, cfg
 	return nil
 }
 
-// codeDiskSize allows the files plus 30% and 16 MiB for ext4's own
-// metadata, in whole 4 KiB blocks.
-func codeDiskSize(files int64) int64 {
-	return (files*13/10 + 16<<20 + 4095) / 4096 * 4096
+// codeDiskSize allows every block the tree uses, plus 30%, a 256-byte inode
+// per entry, and 16 MiB for ext4's own metadata, in whole 4 KiB blocks.
+func codeDiskSize(blockBytes, entries int64) int64 {
+	return (blockBytes*13/10 + entries*256 + 16<<20 + 4095) / 4096 * 4096
 }
 
-// treeBytes adds up the sizes of the plain files under dir.
-func treeBytes(dir string) (int64, error) {
-	var n int64
-	err := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
-			return err
-		}
-		fi, err := d.Info()
+// treeUsage counts the 4 KiB blocks (as bytes) and entries under dir: every
+// file, folder and link takes at least one block and one inode.
+func treeUsage(dir string) (blockBytes, entries int64, err error) {
+	err = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		n += fi.Size()
+		entries++
+		size := int64(4096)
+		if d.Type().IsRegular() {
+			fi, err := d.Info()
+			if err != nil {
+				return err
+			}
+			size = max((fi.Size()+4095)/4096*4096, 4096)
+		}
+		blockBytes += size
 		return nil
 	})
-	return n, err
+	return blockBytes, entries, err
 }
