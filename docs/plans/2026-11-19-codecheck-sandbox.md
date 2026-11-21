@@ -1106,9 +1106,19 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
   **Tests** use local git repos in `t.TempDir()`.
 
-- [ ] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
+- [x] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
       settings and remote only), and remove `.git/hooks`. **Test:** a planted
       `diff.external` and a hook both disappear.
+  - _Done:_ `.git/config` keeps only `[core]` (and `extensions.objectformat` for
+    a SHA-256 repository, which git needs to read it); `.git/hooks` and
+    `.git/config.worktree` go. **Deviation:** no remote either, since its URL
+    can carry a token (`https://user:token@…`) and the VM never fetches.
+    `review.git` runs host-side git with hooks off, `core.fsmonitor=false`,
+    HTTPS-only transport (file only for a local source), no system or global
+    config, and a clean environment. Tests use real git 2.56: planted
+    `diff.external`, `core.fsmonitor`, `core.pager`, a tokened remote, a hook
+    and a worktree config all disappear, and `git log` still works, for SHA-1
+    and SHA-256 repositories.
 - [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
       from `du` plus 30%, with the clone at `src/` and any diff files at
       `change/`; the config block from `guestinit.Encode` (fixed 4 KB, no
