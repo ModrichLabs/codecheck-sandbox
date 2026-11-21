@@ -1039,8 +1039,18 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     the real `cc-guestinit` from it as PID 1, which printed
     `cc-guestinit: reading /dev/vdb: … no such file` on the serial console (no
     config disk attached) and rebooted; Firecracker exited 0.
-- [ ] **Inputs disk** (`guest/inputs.go`): lay out the names `guestinit.Build`
+- [x] **Inputs disk** (`guest/inputs.go`): lay out the names `guestinit.Build`
       expects, then `mkfs.ext4 -d` as the user.
+  - _Done:_ `StageInputs` writes `claude`, `cc-guestinit`, `cc-claude` and
+    `cc-selftest` (from `assets.Guest`), `ca.crt` and `plugin/`, unpacking the
+    `git archive` output with only plain files and folders, nothing escaping,
+    and 64 MiB at most. `MakeInputs` stages in a fresh folder, sizes the disk at
+    the files plus a quarter plus 32 MiB, runs `mkfs.ext4 -q -F -L cc-inputs -d`
+    as the user, and removes the staging folder. `lookTool` also searches
+    `/usr/sbin` and `/sbin`, which some distributions leave off a user's PATH.
+    Tests build a real disk and read it back with the real `debugfs`; a
+    throwaway test staged the real archive of the pinned CodeCheck commit (12
+    files, pax header skipped).
 - [ ] **Launch client** (`launch/client.go`): run `cc-launch` through the
       privilege tool with its console streamed and its exit code kept; M11
       reuses it.
