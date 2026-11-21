@@ -21,13 +21,6 @@ type Details struct {
 	APIKey     string
 	Budget     string // US dollars per review, as typed; see ParseBudget
 	ReportsDir string // as typed; see ExpandReportsDir
-	VMSize     VMSize
-}
-
-// HostSize describes the machine, for scaling the VM size choices.
-type HostSize struct {
-	RAM  uint64
-	CPUs int
 }
 
 // FormDeps supplies what the form's validators need.
@@ -35,19 +28,14 @@ type FormDeps struct {
 	// CheckKey tests a key against Anthropic; nil checks the format only
 	// (dry runs, and tests).
 	CheckKey func(ctx context.Context, key string) error
-	Host     HostSize
 	// Home expands ~ in the reports folder.
 	Home string
 }
 
-// DetailsForm asks for the API key, then the budget, reports folder and VM
-// size, writing the answers into d.
+// DetailsForm asks for the API key, then the budget and reports folder,
+// writing the answers into d. Every review VM gets the same fixed size from
+// cc-launch (spec amendment 10), so nothing asks about it.
 func DetailsForm(d *Details, deps FormDeps) *huh.Form {
-	sizes := VMSizes(deps.Host.RAM, deps.Host.CPUs)
-	opts := make([]huh.Option[VMSize], len(sizes))
-	for i, s := range sizes {
-		opts[i] = huh.NewOption(s.String(), s)
-	}
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -69,11 +57,6 @@ func DetailsForm(d *Details, deps FormDeps) *huh.Form {
 				Description("Each review writes report.md and summary.json into a new folder here.").
 				Value(&d.ReportsDir).
 				Validate(func(s string) error { _, err := ExpandReportsDir(s, deps.Home); return err }),
-			huh.NewSelect[VMSize]().
-				Title("Review VM size").
-				Description("Sizes the host can spare; bigger repositories review faster with more.").
-				Options(opts...).
-				Value(&d.VMSize),
 		),
 	).WithTheme(huh.ThemeFunc(huh.ThemeCharm)).WithShowHelp(true)
 }
@@ -228,28 +211,4 @@ func ExpandReportsDir(s, home string) (string, error) {
 		}
 	}
 	return s, nil
-}
-
-// VMSize sets a review VM's processors and memory.
-type VMSize struct{ VCPUs, MemMiB int }
-
-func (s VMSize) String() string {
-	return fmt.Sprintf("%d vCPUs, %d GiB", s.VCPUs, s.MemMiB/1024)
-}
-
-// DefaultVMSize matches the shape cc-launch gives a review today.
-var DefaultVMSize = VMSize{2, 2048}
-
-var vmSizes = []VMSize{DefaultVMSize, {4, 4096}, {4, 8192}, {8, 16384}}
-
-// VMSizes offers the sizes that leave the host at least half its memory and
-// no fewer processors than the VM takes. The default always stays.
-func VMSizes(ram uint64, cpus int) []VMSize {
-	out := []VMSize{DefaultVMSize}
-	for _, s := range vmSizes[1:] {
-		if uint64(s.MemMiB)<<20 <= ram/2 && s.VCPUs <= cpus {
-			out = append(out, s)
-		}
-	}
-	return out
 }

@@ -138,33 +138,9 @@ func TestReportsFolder(t *testing.T) {
 	}
 }
 
-func TestVMSizesScaleToTheHost(t *testing.T) {
-	small := VMSizes(8<<30, 4)
-	big := VMSizes(64<<30, 16)
-	if len(small) == 0 || small[0] != DefaultVMSize {
-		t.Fatalf("small host: %v", small)
-	}
-	if len(big) <= len(small) {
-		t.Errorf("a bigger host got no bigger sizes: %v vs %v", big, small)
-	}
-	for _, s := range small {
-		if uint64(s.MemMiB)<<20 > (8<<30)/2 || s.VCPUs > 4 {
-			t.Errorf("%v takes more than half the small host", s)
-		}
-	}
-	for _, s := range big {
-		if s.VCPUs > 8 || s.MemMiB > 16384 {
-			t.Errorf("%v exceeds what guestinit accepts", s)
-		}
-	}
-	if tiny := VMSizes(2<<30, 1); len(tiny) != 1 || tiny[0] != DefaultVMSize {
-		t.Errorf("a tiny host still gets the default, which cc-launch uses: %v", tiny)
-	}
-}
-
 func TestDetailsFormBuilds(t *testing.T) {
-	d := Details{Budget: "25", ReportsDir: "~/codecheck-reports", VMSize: DefaultVMSize}
-	f := DetailsForm(&d, FormDeps{Host: HostSize{RAM: 16 << 30, CPUs: 8}})
+	d := Details{Budget: "25", ReportsDir: "~/codecheck-reports"}
+	f := DetailsForm(&d, FormDeps{Home: t.TempDir()})
 	if f == nil {
 		t.Fatal("no form")
 	}

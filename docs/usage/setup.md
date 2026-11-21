@@ -39,7 +39,6 @@ never asks for or stores your password itself.
      stores it in a root-only file that only the proxy service can read.
    - The default per-review budget (US$25).
    - Where reports go.
-   - The VM size, scaled to your machine.
    - The CodeCheck version to use.
    - Whether to send anonymous usage and error reports (off unless you choose
      it; see [privacy and telemetry](privacy-and-telemetry.md)).

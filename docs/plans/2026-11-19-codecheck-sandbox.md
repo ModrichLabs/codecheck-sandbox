@@ -52,9 +52,8 @@ _Updated 2026-11-22._
 - **Consent screen:** the maintainer approved its wording and layout
   (`internal/tui/testdata/consent.golden`) on 2026-11-22; M13 wires it into
   `setup` as it stands.
-- **Waiting on the maintainer:** whether to keep the VM size question, which
-  needs `cc-launch` to read a root-owned size setting before it changes
-  anything; `--prompt`/`--cwe`; and the kernel mirror.
+- **Waiting on the maintainer:** `--prompt`/`--cwe`, and the kernel mirror.
+  Decided 2026-11-22: no VM size question (spec amendment 10).
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1285,27 +1284,26 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     payload rendered from real event structs. **Test:** the default stays off,
     and the sample holds no field outside the event types.
   - _Done:_ **`DetailsForm(&Details, FormDeps)`**: page one asks for the key
-    (`EchoModePassword`); page two for the budget, reports folder and VM size.
-    The key validator checks the format first (errors never repeat the key),
-    then `FormDeps.CheckKey`; huh validates on Enter and again on blur, never
-    per keystroke, so the validator remembers its last answer and calls
-    Anthropic once per key. `KeyChecker` lists models from the host, with a
-    10-second limit and plain-words errors for 401, 403 and others. The call
-    blocks the form while it runs. `ParseBudget` takes `25`, `$25` or `US$25`,
-    from above zero up to US$1,000 (`MaxBudget`). `ExpandReportsDir` expands `~`
-    and refuses relative paths, `/` and the system's own folders. `VMSizes`
-    offers sizes that leave the host half its memory. **Consent:** `tui.Consent`
-    starts on "No"; `y` or → picks yes, and Enter confirms. A filled or hollow
-    dot marks the choice where colour can't. Its viewport shows `SamplePayload`:
-    one event of each type from `telemetry.Sample`, passed through
-    `telemetry.Payload`, the function `Capture` now uses itself, so the screen
-    matches what gets queued. A test checks that `Payload` matches the queue,
-    and the sample's step ID stays tied to a real host step through a `hostnet`
-    test. **Approved 2026-11-22:** the maintainer signed off the consent wording
-    and layout (`internal/tui/testdata/consent.golden`). **For M13:**
-    `cc-launch` fixes each mode's VM shape, so the VM size answer changes
-    nothing until `cc-launch` reads it from a root-owned setting; keep it, or
-    drop the field. `FormDeps.Home` must hold the user's home folder.
+    (`EchoModePassword`); page two for the budget and reports folder. The key
+    validator checks the format first (errors never repeat the key), then
+    `FormDeps.CheckKey`; huh validates on Enter and again on blur, never per
+    keystroke, so the validator remembers its last answer and calls Anthropic
+    once per key. `KeyChecker` lists models from the host, with a 10-second
+    limit and plain-words errors for 401, 403 and others. The call blocks the
+    form while it runs. `ParseBudget` takes `25`, `$25` or `US$25`, from above
+    zero up to US$1,000 (`MaxBudget`). `ExpandReportsDir` expands `~` and
+    refuses relative paths, `/` and the system's own folders. **Consent:**
+    `tui.Consent` starts on "No"; `y` or → picks yes, and Enter confirms. A
+    filled or hollow dot marks the choice where colour can't. Its viewport shows
+    `SamplePayload`: one event of each type from `telemetry.Sample`, passed
+    through `telemetry.Payload`, the function `Capture` now uses itself, so the
+    screen matches what gets queued. A test checks that `Payload` matches the
+    queue, and the sample's step ID stays tied to a real host step through a
+    `hostnet` test. **Approved 2026-11-22:** the maintainer signed off the
+    consent wording and layout (`internal/tui/testdata/consent.golden`). **VM
+    size dropped** (maintainer's choice, 2026-11-22; spec amendment 10):
+    `cc-launch` fixes each mode's shape, so the form no longer asks. **For
+    M13:** `FormDeps.Home` must hold the user's home folder.
 - [x] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
       Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
   - _Done:_ **`DoctorView(theme, rows, width)`** prints a Lip Gloss table
@@ -1369,7 +1367,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.
 - [ ] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
-      folder, VM size, CodeCheck commit, telemetry). Hand-rolled TOML subset or
+      folder, CodeCheck commit, telemetry). Hand-rolled TOML subset or
       `BurntSushi/toml`. **Test:** round trip.
 
 ## M14. Docs
