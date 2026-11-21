@@ -1,5 +1,10 @@
 # codecheck-sandbox
 
+<p align="center">
+  <img src="docs/images/mascot.png" width="220"
+       alt="The codecheck-sandbox mascot: a fox in a hoodie with a shield badge and a tool belt">
+</p>
+
 Run [CodeCheck](https://github.com/Commonwealth-Bank-of-Australia/CodeCheck)
 security reviews inside jailed Firecracker microVMs, with a guided setup wizard.
 
