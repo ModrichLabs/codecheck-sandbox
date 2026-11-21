@@ -1030,8 +1030,15 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     npm tarball's single-file extraction: it refuses the whole tarball on any
     unsafe entry, caps and hashes each member, and moves them into place only
     once all pass. A throwaway test fetched the real v1.18.0 release through it.
-- [ ] **Initramfs** (`guest/initramfs.go`): a newc cpio holding `/init`
+- [x] **Initramfs** (`guest/initramfs.go`): a newc cpio holding `/init`
       (`cc-guestinit`) and `/dev/console`, so the builder's serial log shows.
+  - _Done:_ `guest.Initramfs(init)` writes `dev` (0755), `dev/console` (char
+    5:1, 0600) and `init` (0755), all root with zero mtimes, so the bytes stay
+    reproducible. Tests parse it and check it with the real `cpio -itv`. **Real
+    boot, as a normal user:** the pinned kernel under Firecracker v1.18.0 ran
+    the real `cc-guestinit` from it as PID 1, which printed
+    `cc-guestinit: reading /dev/vdb: … no such file` on the serial console (no
+    config disk attached) and rebooted; Firecracker exited 0.
 - [ ] **Inputs disk** (`guest/inputs.go`): lay out the names `guestinit.Build`
       expects, then `mkfs.ext4 -d` as the user.
 - [ ] **Launch client** (`launch/client.go`): run `cc-launch` through the
