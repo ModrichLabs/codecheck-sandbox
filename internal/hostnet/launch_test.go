@@ -22,6 +22,9 @@ func TestLaunchMatchesTheHostConfig(t *testing.T) {
 	if launch.RulesTable != c.Table {
 		t.Errorf("launch.RulesTable = %s, want %s", launch.RulesTable, c.Table)
 	}
+	if unit := rendered(t, "codecheck-proxy.service"); !strings.Contains(unit, "--deny-log "+p.DenyLog) {
+		t.Errorf("the proxy unit doesn't write its denials to %s, where cc-launch reads them", p.DenyLog)
+	}
 	if p.RulesHash != c.HashPath || p.JailerBase != c.JailerBase {
 		t.Errorf("launch paths %s, %s; hostnet %s, %s", p.RulesHash, p.JailerBase, c.HashPath, c.JailerBase)
 	}

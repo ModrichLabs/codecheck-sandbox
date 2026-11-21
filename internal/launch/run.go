@@ -56,6 +56,7 @@ func Run(ctx context.Context, e Env, m Mounter, id RunID, build bool) (Result, e
 	}
 
 	argv := j.Argv(e, job)
+	job.Started = time.Now().UTC()
 	res, err := e.Run.Run(ctx, system.Cmd{Name: argv[0], Args: argv[1:], CleanEnv: true, Stdout: e.Console, Stderr: e.Console})
 	if err == nil && res.Code != 0 {
 		detail := strings.TrimSpace(string(res.Stderr))

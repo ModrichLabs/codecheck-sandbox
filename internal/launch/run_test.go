@@ -97,6 +97,25 @@ func TestRunReview(t *testing.T) {
 	}
 }
 
+// Run stamps the boot, so only denials from this run reach the results.
+func TestRunCopiesOnlyThisRunsDenials(t *testing.T) {
+	r, h, m := runRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	old := time.Now().UTC().Add(-time.Hour)
+	write(t, r.env.Paths.DenyLog, []byte(`{"time":"`+old.Format(time.RFC3339Nano)+`","reason":"denied-host","host":"old.example"}`+"\n"), 0o600)
+	h.boot = func() {
+		f, _ := os.OpenFile(r.env.Paths.DenyLog, os.O_APPEND|os.O_WRONLY, 0)
+		f.WriteString(`{"time":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","reason":"denied-host","host":"github.com"}` + "\n")
+		f.Close()
+	}
+	if _, err := Run(context.Background(), r.env, m, r.id, false); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(r.dir, "result", "proxy-denials.jsonl"))
+	if err != nil || !strings.Contains(string(b), "github.com") || strings.Contains(string(b), "old.example") {
+		t.Errorf("proxy-denials.jsonl = %q, %v; want only this run's denial", b, err)
+	}
+}
+
 // recordingRunner notes where each command's output goes.
 type recordingRunner struct {
 	*hostRunner
