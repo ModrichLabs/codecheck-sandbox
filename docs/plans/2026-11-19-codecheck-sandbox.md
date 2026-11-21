@@ -1133,12 +1133,21 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `diff.external`, `core.fsmonitor`, `core.pager`, a tokened remote, a hook
     and a worktree config all disappear, and `git log` still works, for SHA-1
     and SHA-256 repositories.
-- [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
+- [x] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
       from `du` plus 30%, with the clone at `src/` and any diff files at
       `change/`; the config block from `guestinit.Encode` (fixed 4 KB, no
       secrets: mode, budget, scope, baseline; the prompt lives in `cc-claude`);
       and a blank output disk. **Tests** run against small fixtures when
       `mkfs.ext4` exists.
+  - _Done:_ `MakeRunFiles(ctx, runner, dir, codeDir, cfg)` writes `config.img`
+    and `code.ext4`. The disk packs `codeDir` (now `Dir/code`, holding `src/`
+    and `change/`; `Prepare` moved the clone there so the disks can sit beside
+    it), sized at the files plus 30% plus 16 MiB, refused past `cc-launch`'s 16
+    GiB cap. A selftest gets an empty `src/`. **No blank output disk:**
+    `cc-launch` makes it since M9. Two shared helpers came out of this:
+    `system.LookTool` (from `guest`) and `launch.StageRun`, which M10's builder
+    now uses too, to install a run's files root-owned. Tests build real disks
+    and read them back with `debugfs`.
 - [ ] `review/postrun.go`, from the extracted files:
   - the result event (`subtype`, `is_error`, `total_cost_usd`)
   - refusal patterns
