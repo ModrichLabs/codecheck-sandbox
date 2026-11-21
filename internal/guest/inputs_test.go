@@ -84,12 +84,21 @@ func TestStageInputsRefusesAnUnsafePlugin(t *testing.T) {
 		"hardlink": {name: "skills/leak", link: "LICENSE.txt", typ: tar.TypeLink},
 		"absolute": {name: "/etc/cron.d/x", body: "x"},
 		"parent":   {name: "../escape", body: "x"},
+		"nested":   {name: "skills/../../escape", body: "x"},
+		"dir up":   {name: "skills/../../up/", typ: tar.TypeDir, mode: 0o755},
 		"device":   {name: "skills/dev", typ: tar.TypeChar},
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
+			parent := t.TempDir()
+			dir := filepath.Join(parent, "stage")
+			os.Mkdir(dir, 0o755)
 			if err := StageInputs(dir, inputsFixture(t, pluginTar(t, e))); err == nil {
 				t.Error("StageInputs accepted it")
+			}
+			for _, leak := range []string{"escape", "up", "stage/escape", "stage/up"} {
+				if _, err := os.Lstat(filepath.Join(parent, leak)); err == nil {
+					t.Errorf("%s got written outside the plugin folder", leak)
+				}
 			}
 		})
 	}

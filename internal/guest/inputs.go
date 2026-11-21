@@ -120,11 +120,18 @@ func lookTool(name string) (string, error) {
 }
 
 // untarPlugin unpacks a git archive into dir, refusing anything but plain
-// files and folders inside it, and more than maxPluginBytes in all.
+// files and folders inside it, and more than maxPluginBytes in all. Every
+// write goes through an os.Root, so the kernel keeps it inside dir even if
+// the name checks ever missed a case.
 func untarPlugin(b []byte, dir string) error {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	var total int64
 	tr := tar.NewReader(bytes.NewReader(b))
 	for {
@@ -139,13 +146,13 @@ func untarPlugin(b []byte, dir string) error {
 			continue
 		}
 		name := path.Clean(h.Name)
-		if path.IsAbs(h.Name) || name == ".." || slices.Contains(strings.Split(h.Name, "/"), "..") {
+		if !filepath.IsLocal(filepath.FromSlash(name)) || slices.Contains(strings.Split(h.Name, "/"), "..") {
 			return fmt.Errorf("plugin entry %q escapes its folder", h.Name)
 		}
-		dst := filepath.Join(dir, filepath.FromSlash(name))
+		dst := filepath.FromSlash(name)
 		switch h.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(dst, 0o755); err != nil {
+			if err := root.MkdirAll(dst, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
@@ -153,14 +160,14 @@ func untarPlugin(b []byte, dir string) error {
 			if total > maxPluginBytes {
 				return fmt.Errorf("the plugin holds more than %d bytes", maxPluginBytes)
 			}
-			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			if err := root.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 				return err
 			}
 			mode := os.FileMode(0o644)
 			if h.Mode&0o111 != 0 {
 				mode = 0o755
 			}
-			out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, mode)
+			out, err := root.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, mode)
 			if err != nil {
 				return err
 			}
