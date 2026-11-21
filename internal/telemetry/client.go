@@ -85,16 +85,11 @@ func (p *PostHog) queuePath() string { return filepath.Join(p.o.Dir, QueueFile) 
 
 // Capture implements Client.
 func (p *PostHog) Capture(e Event) {
-	props, err := Properties(e)
+	props, err := Payload(e)
 	if err != nil {
 		p.o.Log.Warn("telemetry: dropping an event", "event", e.EventName(), "err", err)
 		return
 	}
-	if ex, ok := e.(Exception); ok {
-		props = exceptionShape(ex, props)
-	}
-	props["$process_person_profile"] = false
-	props["$geoip_disable"] = true
 	line, err := json.Marshal(queued{Event: e.EventName(), Properties: props, Timestamp: time.Now().UTC()})
 	if err != nil {
 		p.o.Log.Warn("telemetry: dropping an event", "event", e.EventName(), "err", err)
@@ -194,6 +189,22 @@ func (p *PostHog) Flush(ctx context.Context) {
 		p.o.Log.Warn("telemetry: sending timed out; events dropped", "timeout", p.o.Timeout)
 	case <-ctx.Done():
 	}
+}
+
+// Payload builds the properties Capture queues for e: its fields, PostHog's
+// exception shape for errors, and the two privacy flags. The consent screen
+// shows its output, so what the user sees matches what gets sent.
+func Payload(e Event) (map[string]any, error) {
+	props, err := Properties(e)
+	if err != nil {
+		return nil, err
+	}
+	if ex, ok := e.(Exception); ok {
+		props = exceptionShape(ex, props)
+	}
+	props["$process_person_profile"] = false
+	props["$geoip_disable"] = true
+	return props, nil
 }
 
 // exceptionShape moves the stack into PostHog's $exception_list format.

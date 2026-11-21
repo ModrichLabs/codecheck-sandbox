@@ -1262,12 +1262,35 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     While the tool holds the terminal, the main pane says it waits for the
     password. `docs/manual-tests.md` holds the hand checks (prompt, wrong
     password, Ctrl-C, lapse, quitting).
-- [ ] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
+- [x] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
       key. The API key field uses `EchoModePassword`, and its validator calls
       `/v1/models` through an injectable client. Tests cover the validators.
   - A telemetry consent step: default "No", with a viewport showing a sample
     payload rendered from real event structs. **Test:** the default stays off,
     and the sample holds no field outside the event types.
+  - _Done:_ **`DetailsForm(&Details, FormDeps)`**: page one asks for the key
+    (`EchoModePassword`); page two for the budget, reports folder and VM size.
+    The key validator checks the format first (errors never repeat the key),
+    then `FormDeps.CheckKey`; huh validates on Enter and again on blur, never
+    per keystroke, so the validator remembers its last answer and calls
+    Anthropic once per key. `KeyChecker` lists models from the host, with a
+    10-second limit and plain-words errors for 401, 403 and others. The call
+    blocks the form while it runs. `ParseBudget` takes `25`, `$25` or `US$25`,
+    from above zero up to US$1,000 (`MaxBudget`). `ExpandReportsDir` expands `~`
+    and refuses relative paths, `/` and the system's own folders. `VMSizes`
+    offers sizes that leave the host half its memory. **Consent:** `tui.Consent`
+    starts on "No"; `y` or → picks yes, and Enter confirms. A filled or hollow
+    dot marks the choice where colour can't. Its viewport shows `SamplePayload`:
+    one event of each type from `telemetry.Sample`, passed through
+    `telemetry.Payload`, the function `Capture` now uses itself, so the screen
+    matches what gets queued. A test checks that `Payload` matches the queue,
+    and the sample's step ID stays tied to a real host step through a `hostnet`
+    test. **Waiting on the maintainer:** the consent wording and layout
+    (`internal/tui/testdata/consent.golden`) need sign-off before M13 wires them
+    into `setup`. **For M13:** `cc-launch` fixes each mode's VM shape, so the VM
+    size answer changes nothing until `cc-launch` reads it from a root-owned
+    setting; keep it, or drop the field. `FormDeps.Home` must hold the user's
+    home folder.
 - [ ] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
       Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
 - [ ] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY

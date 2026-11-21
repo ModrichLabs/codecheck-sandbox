@@ -128,6 +128,9 @@ func TestStepsOrderPhaseAndTelemetry(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("order = %v, want %v", got, want)
 	}
+	if !slices.Contains(got, telemetry.SampleStep) {
+		t.Errorf("the consent screen's sample names %q, which no host step uses", telemetry.SampleStep)
+	}
 }
 
 func TestStepsRefuseAnInvalidConfig(t *testing.T) {
