@@ -2,7 +2,7 @@
 
 ## Where we are (resume here)
 
-_Updated 2026-11-21._
+_Updated 2026-11-22._
 
 - **Done:** M0 (spikes S1–S5 and the gate; all spec amendments approved) and M1
   (scaffold, command tree, licence, community files, documentation skeleton).
@@ -14,31 +14,36 @@ _Updated 2026-11-21._
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
   launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
   precomputes diff-mode changes, so Claude gets no Bash at all.
-- **Waiting for the maintainer's merge:** M10, guest build, PR #13 on
-  `feat/guest-build`, reviewed and fixed.
-- **In progress:** M11, review pipeline, on branch `feat/review-pipeline`,
-  stacked on `feat/guest-build` (it uses M10's `launch.Client`); rebase onto
-  `main` once #13 merges. Every M11 task done. `/code-review medium` found 9
-  issues, all fixed test-first: code disks sized by bytes alone ran out of
-  blocks and inodes with many small files (now blocks and entries count, and
-  `mkfs.ext4 -N` gets an inode each); a failed preparation left the clone
-  behind; a token in a source URL reached `summary.json` and git's error text
-  (now `DisplayTarget` and scrubbed errors); a failed denial copy left a
-  root-only file that broke the report; a transcript line over the scanner's
-  buffer hid the result; trimmed diff and status output; two runs in one second
-  shared a report folder; the size error printed the wrong number; denials past
-  the cap went uncounted (now a `{"dropped":N}` line). Next: the M11 pull
-  request (stacked on #13), then M12 (interface). Untested until a real boot
-  (M15): `--parent-cgroup` inside the scope, and full builds and reviews through
-  `cc-launch` (only the builder's initramfs and `cc-guestinit` booted for real
-  so far).
+- **Waiting for the maintainer's merge (a stack):** M10, guest build, PR #13 on
+  `feat/guest-build`; M11, review pipeline, PR #14 on `feat/review-pipeline`
+  (based on #13); M12, interface, on `feat/interface` (based on #14). Each gets
+  rebased onto `main` once the one below merges.
+- **In progress:** M12, interface: every task done (theme, root model, screens,
+  sudo handover, forms and consent, doctor/review/uninstall, plain mode). Next:
+  `/code-review medium`, then the pull request. Then M13 (commands).
+- **M11 notes:** `/code-review medium` found 9 issues, all fixed test-first:
+  code disks sized by bytes alone ran out of blocks and inodes with many small
+  files (now blocks and entries count, and `mkfs.ext4 -N` gets an inode each); a
+  failed preparation left the clone behind; a token in a source URL reached
+  `summary.json` and git's error text (now `DisplayTarget` and scrubbed errors);
+  a failed denial copy left a root-only file that broke the report; a transcript
+  line over the scanner's buffer hid the result; trimmed diff and status output;
+  two runs in one second shared a report folder; the size error printed the
+  wrong number; denials past the cap went uncounted (now a `{"dropped":N}`
+  line). Untested until a real boot (M15): `--parent-cgroup` inside the scope,
+  and full builds and reviews through `cc-launch` (only the builder's initramfs
+  and `cc-guestinit` booted for real so far).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
 - **Dependency pins:** choose versions at least two weeks old;
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
-- **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
-  unless a task blocks.
+  `charm.land/log/v2` v2.0.1, `posthog-go` v1.40.1, and M12's Charm set
+  (bubbletea v2.1.1, bubbles v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour
+  v2.0.1, teatest v2 at `c83711a`).
+- **Waiting on the maintainer:** sign-off on the telemetry consent screen's
+  wording and layout (`internal/tui/testdata/consent.golden`) before M13 wires
+  it into `setup`; and whether to keep the VM size question, which needs
+  `cc-launch` to read a root-owned size setting before it changes anything.
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1313,8 +1318,19 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     the way:** running the tests three times showed that, after a quit, the
     cancelled engine's own end could replace `ErrQuit` with `context.Canceled`;
     a quit now sticks, and a direct test checks it.
-- [ ] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
+- [x] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
       exists. Golden test of a full fake run.
+  - _Done:_ `RunPlain(ctx, PlainConfig)` prints `charmbracelet/log` lines
+    without timestamps through a `colorprofile.Writer`, so piped output carries
+    no colour codes. Events and approval questions pass through one loop, so
+    lines come out in the engine's order. Plans print as `# cmd` for root and
+    `$ cmd` for the user's own. Progress prints once per new tenth.
+    **Approval:** `--yes` approves everything; otherwise `PlainConfig.In`
+    answers `Run <step>? [y/N]` (only `y` or `yes` counts, and end of input
+    means no). With neither, a plan stops the run with `ErrNeedsYes`, since the
+    engine treats a nil `Confirm` as approval. **For M13:** pass `os.Stdin` as
+    `In` for `--plain` on a terminal, nil when stdin isn't one; `Elevate` there
+    runs the login command straight on the terminal.
 
 ## M13. Commands (`internal/cli`)
 

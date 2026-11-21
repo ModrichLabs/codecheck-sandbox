@@ -103,6 +103,16 @@ Root steps show their commands and file contents before running, unless you pass
 that, root commands run with `sudo -n`, so nothing can prompt behind the
 interface.
 
+The interface (`internal/tui`, styled by `internal/theme`) runs the engine on
+its own goroutine and turns its events, approval questions and password
+handovers into Bubble Tea screens: a sidebar of phases, the current phase's
+steps, the confirm panel (`d` shows every byte of every file), progress, and a
+failure screen with a suggested fix and `r` to retry. Without a terminal, or
+with `--plain` or `--yes`, the same engine prints log lines instead; it never
+approves a plan silently. Text from outside the program, such as a review's
+`report.md` or a command's error output, has its terminal escape sequences
+removed before it reaches the screen.
+
 The system layer (`internal/system`) holds these pieces. The `Runner` never
 starts a shell and runs every command with `LC_ALL=C`. The privilege runner
 detects sudo, sudo-rs, doas or run0 and runs each root command with the tool's

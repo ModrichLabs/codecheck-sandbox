@@ -1,0 +1,9 @@
+INFO  platform-kvm: KVM access already done detail="/dev/kvm usable"
+INFO  components: Install packages planned (needs root):
+  # pacman -S --needed --noconfirm e2fsprogs
+INFO  components: Install packages: asking for the privilege login
+INFO  components: Install packages done
+INFO  guest-image: Building the guest root disk 5%
+INFO  guest-image: Building the guest root disk 42%
+INFO  guest-image: Building the guest root disk 100%
+ERROR guest-image: Guest image failed err="mkfs.ext4:  no space left on device"
