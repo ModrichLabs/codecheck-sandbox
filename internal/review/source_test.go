@@ -70,8 +70,9 @@ func TestPrepareDiffAgainstABase(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(p.Change, "status.txt")); err != nil {
 		t.Errorf("status.txt: %v", err)
 	}
-	if filepath.Dir(p.Change) != p.Dir || filepath.Base(p.Change) != "change" {
-		t.Errorf("change folder %s, want beside the clone", p.Change)
+	// The code disk packs Dir/code whole: the clone and the change files.
+	if p.Change != filepath.Join(p.Dir, "code", "change") || p.Clone != filepath.Join(p.Dir, "code", "src") {
+		t.Errorf("clone %s, change %s; want both under %s/code", p.Clone, p.Change, p.Dir)
 	}
 }
 

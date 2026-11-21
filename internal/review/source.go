@@ -28,8 +28,8 @@ type Source struct {
 type Prepared struct {
 	Name   string
 	Dir    string // the work folder, mode 0700
-	Clone  string // Dir/src: the hardened clone
-	Change string // Dir/change, holding diff.patch and status.txt; "" for a full review
+	Clone  string // Dir/code/src: the hardened clone
+	Change string // Dir/code/change: diff.patch and status.txt; "" for a full review
 	Scope  guestinit.Scope
 	Base   string // the baseline commit, for a diff review
 	Head   string // the commit under review
@@ -65,7 +65,10 @@ func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, no
 	if err := os.Mkdir(p.Dir, 0o700); err != nil {
 		return Prepared{}, err
 	}
-	p.Clone = filepath.Join(p.Dir, "src")
+	if err := os.Mkdir(filepath.Join(p.Dir, "code"), 0o755); err != nil {
+		return Prepared{}, err
+	}
+	p.Clone = filepath.Join(p.Dir, "code", "src")
 	g := func(args ...string) (string, error) {
 		out, err := git(ctx, r, local, append([]string{"-C", p.Clone}, args...)...)
 		return strings.TrimSpace(string(out)), err
@@ -105,7 +108,7 @@ func Prepare(ctx context.Context, r system.Runner, workRoot string, s Source, no
 	}
 
 	p.Scope = guestinit.ScopeDiff
-	p.Change = filepath.Join(p.Dir, "change")
+	p.Change = filepath.Join(p.Dir, "code", "change")
 	if err := os.Mkdir(p.Change, 0o755); err != nil {
 		return Prepared{}, err
 	}

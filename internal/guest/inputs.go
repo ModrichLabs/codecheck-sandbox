@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -90,7 +89,7 @@ func MakeInputs(ctx context.Context, r system.Runner, work, disk string, in Inpu
 	if err != nil {
 		return err
 	}
-	mkfs, err := lookTool("mkfs.ext4")
+	mkfs, err := system.LookTool("mkfs.ext4")
 	if err != nil {
 		return err
 	}
@@ -102,21 +101,6 @@ func MakeInputs(ctx context.Context, r system.Runner, work, disk string, in Inpu
 		return fmt.Errorf("mkfs.ext4: %s", strings.TrimSpace(string(res.Stderr)))
 	}
 	return nil
-}
-
-// lookTool finds a system tool on PATH or in the sbin folders, which an
-// ordinary user's PATH leaves out on some distributions.
-func lookTool(name string) (string, error) {
-	if p, err := exec.LookPath(name); err == nil {
-		return p, nil
-	}
-	for _, dir := range []string{"/usr/sbin", "/sbin"} {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("%s not found: install e2fsprogs", name)
 }
 
 // untarPlugin unpacks a git archive into dir, refusing anything but plain
