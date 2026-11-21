@@ -1094,7 +1094,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M11. Review pipeline (`internal/review`)
 
-- [ ] `review/source.go`:
+- [x] `review/source.go`:
   - Clone a URL or local path into `~/codecheck-work/<name>-<ts>` (`--no-local`
     for paths).
   - `--pr N` fetches `pull/N/head`.
@@ -1105,6 +1105,20 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     (spec amendment 9).
 
   **Tests** use local git repos in `t.TempDir()`.
+
+  - _Done:_
+    `review.Prepare(ctx, runner, workRoot, Source{Target, PR, Base}, now)` makes
+    `<workRoot>/<name>-<UTC time>` (0700) and clones into `src/` with
+    `--no-local --template= --no-recurse-submodules`. A pull request checks out
+    `refs/pull/N/head` detached, with its merge base against `origin/HEAD` as
+    the baseline; `--base` resolves the ref (then `origin/<ref>`) and takes the
+    merge base with HEAD. After hardening, a diff review writes
+    `git diff --no-ext-diff --no-textconv --no-color <base>` and
+    `git status --porcelain` to `change/`. Refused: anything but `https://` or
+    an existing folder (`http`, `ssh`, `user@host:`, `ext::`, a leading `-`), a
+    ref with a leading `-` or odd characters, `--pr` with `--base`, and an
+    unknown base. Tests use real repositories, including a bare origin with
+    `refs/pull/7/head`.
 
 - [x] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
       settings and remote only), and remove `.git/hooks`. **Test:** a planted
