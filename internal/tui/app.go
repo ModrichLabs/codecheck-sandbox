@@ -8,7 +8,9 @@ import (
 	"errors"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/step"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/theme"
@@ -43,6 +45,11 @@ type Config struct {
 	Run     RunFunc
 }
 
+const (
+	running = theme.Running
+	failed  = theme.Failed
+)
+
 // App drives one engine run.
 type App struct {
 	cfg    Config
@@ -50,15 +57,18 @@ type App struct {
 	width  int
 	height int
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	events chan step.Event
-	done   chan error
+	ctx      context.Context
+	cancel   context.CancelFunc
+	events   chan step.Event
+	requests chan any // confirmReq, elevateReq
+	done     chan error
 
-	states  map[string]theme.State
-	details map[string]string
-	current string // the step the engine works on
-	root    bool   // the current step's plan needs root
+	states   map[string]theme.State
+	current  string // the step the engine works on
+	root     bool   // the current step's plan needs root
+	spin     spinner.Model
+	progress progressState
+	confirm  *confirmState
 
 	finished       bool
 	err            error
@@ -68,19 +78,19 @@ type App struct {
 // New builds the interface for one run.
 func New(cfg Config) *App {
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &App{
+	return &App{
 		cfg: cfg, th: cfg.Theme, width: 100, height: 30,
 		ctx: ctx, cancel: cancel,
-		events: make(chan step.Event), done: make(chan error, 1),
-		states: map[string]theme.State{}, details: map[string]string{},
+		events: make(chan step.Event), requests: make(chan any), done: make(chan error, 1),
+		states: map[string]theme.State{},
+		spin:   newSpinner(cfg.Theme),
 	}
-	return a
 }
 
 // Init starts the engine.
 func (a *App) Init() tea.Cmd {
 	a.startRun()
-	return a.listen()
+	return tea.Batch(a.listen(), a.spin.Tick)
 }
 
 // Stop ends the engine run, if any; the interface stays as it was.
@@ -96,22 +106,25 @@ func (a *App) Finished() bool { return a.finished }
 func (a *App) StepState(id string) theme.State { return a.states[id] }
 
 func (a *App) startRun() {
-	opts := step.Options{Events: a.events}
+	opts := step.Options{Events: a.events, Confirm: a.confirmPlan}
 	ctx, run := a.ctx, a.cfg.Run
 	go func() { a.done <- run(ctx, opts) }()
 }
 
 type runDoneMsg struct{ err error }
 
-// listen waits for the engine's next event, or the end of the run. One
-// listener runs at a time, and the engine blocks on each event until it gets
-// read, so every event reaches Update before the run's end does.
+// listen waits for the engine's next event or request, or the end of the
+// run. One listener runs at a time, and the engine blocks on each event and
+// request until it gets read, so everything reaches Update in the order the
+// engine sent it, and before the run's end.
 func (a *App) listen() tea.Cmd {
-	events, done, ctx := a.events, a.done, a.ctx
+	events, requests, done, ctx := a.events, a.requests, a.done, a.ctx
 	return func() tea.Msg {
 		select {
 		case ev := <-events:
 			return ev
+		case req := <-requests:
+			return req
 		case err := <-done:
 			return runDoneMsg{err}
 		case <-ctx.Done():
@@ -125,11 +138,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
+	case spinner.TickMsg:
+		if a.finished {
+			return a, nil
+		}
+		var cmd tea.Cmd
+		a.spin, cmd = a.spin.Update(msg)
+		return a, cmd
 	case step.Event:
 		a.apply(msg)
 		return a, a.listen()
+	case confirmReq:
+		a.openConfirm(msg)
+		return a, a.listen()
 	case runDoneMsg:
-		a.finished, a.err, a.root = true, msg.err, false
+		a.finished, a.err, a.root, a.confirm = true, msg.err, false, nil
 	case tea.KeyPressMsg:
 		return a.key(msg)
 	}
@@ -139,31 +162,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *App) apply(ev step.Event) {
 	switch ev.Kind {
 	case step.StepStarted:
-		a.current, a.root = ev.StepID, false
-		a.states[ev.StepID] = theme.Running
+		a.current, a.root, a.progress = ev.StepID, false, progressState{}
+		a.states[ev.StepID] = running
 	case step.StepPlanned:
 		if ev.Plan != nil {
 			a.root = ev.Plan.NeedsRoot
 		}
+	case step.Progress:
+		a.progress = progressState{msg: ev.Message, frac: ev.Fraction}
 	case step.StepDone:
 		a.states[ev.StepID] = theme.Done
 		if ev.Skipped {
 			a.states[ev.StepID] = theme.Skipped
 		}
-		a.details[ev.StepID] = ev.Status.Detail
-		a.root = false
+		a.root, a.progress = false, progressState{}
 	case step.StepFailed:
-		a.states[ev.StepID] = theme.Failed
-		if ev.Err != nil {
-			a.details[ev.StepID] = ev.Err.Error()
-		}
-		a.root = false
+		a.states[ev.StepID] = failed
+		a.root, a.progress = false, progressState{}
 	}
 }
 
 // rootBusy reports a root step under way, which quitting would cut short.
+// A plan still waiting for approval has run nothing yet.
 func (a *App) rootBusy() bool {
-	return !a.finished && a.root && a.states[a.current] == theme.Running
+	return !a.finished && a.confirm == nil && a.root && a.states[a.current] == running
 }
 
 func (a *App) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -177,6 +199,9 @@ func (a *App) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	}
+	if a.confirm != nil {
+		return a.confirmKey(key, k)
+	}
 	switch key {
 	case "q", "ctrl+c":
 		if a.rootBusy() {
@@ -188,29 +213,132 @@ func (a *App) key(k tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.finished {
 			return a, tea.Quit
 		}
+	case "r":
+		if a.finished && a.err != nil && !errors.Is(a.err, ErrQuit) {
+			return a, a.retry()
+		}
 	}
 	return a, nil
+}
+
+// retry runs the engine again. Steps that finished pass their checks and
+// get skipped, so the run picks up at the failed step.
+func (a *App) retry() tea.Cmd {
+	for id, s := range a.states {
+		if s == failed || s == running {
+			a.states[id] = theme.Pending
+		}
+	}
+	a.finished, a.err = false, nil
+	a.startRun()
+	return tea.Batch(a.listen(), a.spin.Tick)
 }
 
 func (a *App) quit() (tea.Model, tea.Cmd) {
 	if !a.finished {
 		a.err = ErrQuit
 	}
+	a.confirm = nil
 	a.cancel()
 	return a, tea.Quit
 }
 
+// --- Layout ---
+
+// innerWidth spans the frame's inside; mainWidth the pane right of the
+// sidebar and its " │ " divider.
+func (a *App) innerWidth() int { return max(a.width-4, 20) }
+func (a *App) mainWidth() int  { return max(a.innerWidth()-sidebarWidth-3, 10) }
+func (a *App) innerRows() int  { return max(a.height-2, 5) }
+
+// bodyRows leaves room in the main pane for the heading, its gap, the step
+// list, a gap and the help line.
+func (a *App) bodyRows() int {
+	return a.innerRows() - 2 - len(a.stepLines()) - 1 - 2
+}
+
 // View implements tea.Model.
 func (a *App) View() tea.View {
+	side := a.sidebarLines()
+	main := a.mainLines()
+	rows := a.innerRows()
+	divider := a.th.Faint.Render("│")
 	var b strings.Builder
-	b.WriteString(a.th.Title.Render(a.cfg.Title) + "\n\n")
-	for _, s := range a.cfg.Steps {
-		b.WriteString(a.th.Mark(a.states[s.ID]) + " " + s.Title + "\n")
+	for i := range rows {
+		var l, r string
+		if i < len(side) {
+			l = side[i]
+		}
+		if i < len(main) {
+			r = main[i]
+		}
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(pad(l, sidebarWidth) + " " + divider + " " + ansi.Truncate(r, a.mainWidth(), "…"))
 	}
-	if a.confirmingQuit {
-		b.WriteString("\nA root step is running. Quit anyway? [y] [n]\n")
-	}
-	v := tea.NewView(b.String())
+	v := tea.NewView(a.th.Panel(a.cfg.Title, b.String(), a.width))
 	v.AltScreen = true
 	return v
+}
+
+// mainLines fills the main pane: heading, steps, the screen's own body, and
+// the help line pinned to the bottom.
+func (a *App) mainLines() []string {
+	lines := []string{a.th.Heading.Render(a.phaseTitle()), ""}
+	lines = append(lines, a.stepLines()...)
+	lines = append(lines, "")
+	rows := a.bodyRows()
+	w := a.mainWidth()
+	var body []string
+	switch {
+	case a.confirm != nil && a.confirm.files:
+		body = strings.Split(a.confirm.vp.View(), "\n")
+	case a.confirm != nil:
+		p := a.confirm.req.plan
+		summary := strings.Join(planSummary(p, max(rows-2, 1)), "\n")
+		panel := a.th.Panel
+		if p.NeedsRoot {
+			panel = a.th.AlertPanel
+		}
+		body = strings.Split(panel(planTitle(p), summary, w), "\n")
+	case a.finished && a.err != nil && !errors.Is(a.err, ErrQuit):
+		body = a.failureLines(w)
+	case a.finished && a.err == nil:
+		body = []string{a.th.Mark(theme.Done) + " " + a.th.Heading.Render("All steps done.")}
+	default:
+		body = a.progressLines()
+	}
+	if len(body) > rows {
+		body = body[:rows]
+	}
+	lines = append(lines, body...)
+	for len(lines) < a.innerRows()-1 {
+		lines = append(lines, "")
+	}
+	return append(lines, a.helpLine())
+}
+
+func (a *App) helpLine() string {
+	k := func(name, does string) theme.Key { return theme.Key{Name: name, Does: does} }
+	switch {
+	case a.confirmingQuit:
+		return a.th.Warning.Render("Quitting now could leave a root step half done. Quit anyway?") + "  " +
+			a.th.KeyHelp(k("y", "quit"), k("n", "keep going"))
+	case a.confirm != nil && a.confirm.files:
+		return a.th.KeyHelp(k("↑/↓", "scroll"), k("d", "back"), k("q", "quit"))
+	case a.confirm != nil:
+		return a.th.KeyHelp(k("Enter", "run"), k("d", "show files"), k("s", "skip"), k("q", "quit"))
+	case a.finished && a.err == nil:
+		return a.th.KeyHelp(k("Enter", "finish"))
+	case a.finished && !errors.Is(a.err, ErrQuit):
+		return a.th.KeyHelp(k("r", "retry"), k("q", "quit"))
+	}
+	return a.th.KeyHelp(k("q", "quit"))
+}
+
+// pad fills s with spaces to width columns.
+func pad(s string, width int) string {
+	s = ansi.Truncate(s, width, "…")
+	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
 }

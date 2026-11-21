@@ -1,0 +1,30 @@
+╭ CodeCheck Sandbox setup ─────────────────────────────────────────────────────────────────────────╮
+│ ✓ Welcome          │ Host network                                                                │
+│ ✓ Platform         │                                                                             │
+│ ✓ Components       │ ✓ fcjail user                                                               │
+│ ✓ Your details     │ ⣾ Review tap cc-tap0                                                        │
+│ ▸ Host network     │ · Firewall rules (nftables)                                                 │
+│ · Guest build      │ · Egress proxy service                                                      │
+│ · Verify           │                                                                             │
+│ · Summary          │ ╭ Needs root: review before running ──────────────────────────────────────╮ │
+│                    │ │ ip tuntap add dev cc-tap0 mode tap user fcjail                          │ │
+│                    │ │ ip addr add 172.16.0.1/30 dev cc-tap0                                   │ │
+│                    │ │ write /etc/codecheck-sandbox/rules.nft (0644, 107 bytes)                │ │
+│                    │ ╰─────────────────────────────────────────────────────────────────────────╯ │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │ [Enter] run   [d] show files   [s] skip   [q] quit                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

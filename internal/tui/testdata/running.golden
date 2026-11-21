@@ -1,0 +1,30 @@
+╭ CodeCheck Sandbox setup ─────────────────────────────────────────────────────────────────────────╮
+│ ✓ Welcome          │ Host network                                                                │
+│ ✓ Platform         │                                                                             │
+│ ✓ Components       │ ✓ fcjail user                                                               │
+│ ✓ Your details     │ ⣾ Review tap cc-tap0                                                        │
+│ ▸ Host network     │ · Firewall rules (nftables)                                                 │
+│ · Guest build      │ · Egress proxy service                                                      │
+│ · Verify           │                                                                             │
+│ · Summary          │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │ [q] quit                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

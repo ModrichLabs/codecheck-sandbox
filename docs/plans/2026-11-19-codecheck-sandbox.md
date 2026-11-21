@@ -1230,6 +1230,23 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       key opens a viewport of files, Enter, `s`, `q`), `tui/progress.go`,
       `tui/failure.go` (cause, fix, `r` retry). Each gets a `teatest` golden
       test at 100×30.
+  - _Done:_ The frame matches the spec §2 mock-up: the title set into a rounded
+    border, an 18-column sidebar, and the current phase's steps with the
+    screen's body below and the help line pinned to the bottom. **Confirm:** the
+    engine's `Confirm` hands the plan over a request channel (read by the same
+    single listener) and waits; the panel lists each command as a shell would
+    read it and each file as `write PATH (MODE, N bytes)`, in the alert colour
+    when the plan needs root. `d` opens a viewport with every command and each
+    file's exact bytes; Enter there does nothing, so nothing gets approved
+    unseen. **`s` declines**: the engine has no optional steps, so a declined
+    step ends the run with `step.ErrDeclined`, and the failure screen says so.
+    **Progress** draws a static bar (`ViewAs`) from the latest event.
+    **Failure** shows the cause and a fix: an error that implements `tui.Fixer`
+    brings its own, and known sentinels (login expired, no privilege tool,
+    declined, still failing) get set text. **`r` retries** the whole run;
+    finished steps pass their checks and get skipped. Goldens live in
+    `internal/tui/testdata/` (`go test ./internal/tui -update` rewrites them);
+    every screen test also checks the 100×30 bounds.
 - [ ] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
       `tea.ExecProcess(sudo -v)`, then start the keepalive. A unit test checks
       the message flow. The manual checklist goes in `docs/manual-tests.md`.
