@@ -1,0 +1,30 @@
+╭ CodeCheck review ────────────────────────────────────────────────────────────────────────────────╮
+│ Outcome: ok  ·  US$3.41  ·  4 sub-agents  ·  7m05s                                               │
+│ ! The proxy refused 2 request(s) from the VM (github.com); see proxy-denials.jsonl.              │
+│ Saved in /home/user/codecheck-reports/widget-pr42-20261122-100000                                │
+│                                                                                                  │
+│    Findings                                                                                      │
+│                                                                                                  │
+│   ## SQL injection in  search                                                                    │
+│                                                                                                  │
+│   The query joins user input.                                                                    │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ [↑/↓] scroll   [q] quit                                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

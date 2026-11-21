@@ -74,6 +74,16 @@ func TestQuitWhileIdleQuitsAtOnce(t *testing.T) {
 	}
 }
 
+// The engine's own end, arriving after a quit, mustn't replace ErrQuit.
+func TestQuitSurvivesTheEnginesLateEnd(t *testing.T) {
+	a := New(testConfig(nil))
+	a.quit()
+	a.Update(runDoneMsg{err: context.Canceled})
+	if !errors.Is(a.Err(), ErrQuit) || !a.Finished() {
+		t.Errorf("Err = %v, finished %v", a.Err(), a.Finished())
+	}
+}
+
 func TestQuitDuringARootStepAsksFirst(t *testing.T) {
 	for _, key := range []string{"q", "ctrl+c"} {
 		t.Run(key, func(t *testing.T) {

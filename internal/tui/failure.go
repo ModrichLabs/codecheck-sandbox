@@ -45,7 +45,7 @@ func (a *App) failureLines(width int) []string {
 		}
 	}
 	wrap := lipgloss.NewStyle().Width(width - 4)
-	body := a.th.Error.Render("Cause:") + " " + a.err.Error() + "\n\n" +
+	body := a.th.Error.Render("Cause:") + " " + sanitise(a.err.Error()) + "\n\n" +
 		a.th.Heading.Render("Fix:") + " " + Fix(a.err)
 	return strings.Split(a.th.AlertPanel(a.th.Mark(failed)+" "+title, wrap.Render(body), width), "\n")
 }

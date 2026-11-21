@@ -1291,8 +1291,28 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     size answer changes nothing until `cc-launch` reads it from a root-owned
     setting; keep it, or drop the field. `FormDeps.Home` must hold the user's
     home folder.
-- [ ] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
+- [x] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
       Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
+  - _Done:_ **`DoctorView(theme, rows, width)`** prints a Lip Gloss table
+    (static output, so not the interactive bubbles table) with a tally, sized to
+    its content and capped at the width. **`tui.Review`** runs a `ReviewFunc` (a
+    closure over `review.Pipeline`) on its own goroutine and shows the target,
+    the live state from `Pipeline.Status`, a status list and the elapsed time,
+    ticking each second. Once done, it shows the outcome, cost, sub-agents,
+    warnings and folder, then `report.md` through Glamour in a viewport.
+    **Quitting a running review** asks, cancels, then waits for the pipeline to
+    shut the VM down and run `cc-launch clean` before it quits. **Terminal
+    safety:** `report.md` quotes code the model read, so `sanitise` removes
+    whole escape sequences (payload too), stray control characters, invalid
+    bytes and bidirectional overrides before Glamour sees it; error text and
+    doctor details get the same. The confirm panel instead spells such bytes out
+    (`\x1b`, `‮`) through `visible`, since the preview must show every byte that
+    runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest items
+    marked created, plus reports with `--purge`) and what stays (adopted items
+    and the reports folder). Enter confirms; `q`, `n` or Esc cancels. **Fixed on
+    the way:** running the tests three times showed that, after a quit, the
+    cancelled engine's own end could replace `ErrQuit` with `context.Canceled`;
+    a quit now sticks, and a direct test checks it.
 - [ ] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
       exists. Golden test of a full fake run.
 

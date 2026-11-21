@@ -1,0 +1,8 @@
+╭──────────────────┬───────────────────────────────────────────────────────╮
+│ Check            │ Detail                                                │
+├──────────────────┼───────────────────────────────────────────────────────┤
+│ ✓ KVM access     │ /dev/kvm readable and writable by fcjail              │
+│ ✗ Firewall rules │ rule hash differs from the installed rules; run setup │
+│ ✓ Egress proxy   │ listening on 172.16.0.1:3180 as codecheck-proxy       │
+╰──────────────────┴───────────────────────────────────────────────────────╯
+2 passed, 1 failed · fix the failed checks, then run doctor again

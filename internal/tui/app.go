@@ -164,6 +164,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loginDoneMsg:
 		a.loginDone(msg)
 	case runDoneMsg:
+		if errors.Is(a.err, ErrQuit) {
+			// The engine stopped because the user quit; its own error
+			// (context.Canceled) mustn't replace that.
+			a.finished = true
+			return a, nil
+		}
 		a.finished, a.err, a.root, a.confirm = true, msg.err, false, nil
 	case tea.KeyPressMsg:
 		return a.key(msg)

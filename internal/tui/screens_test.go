@@ -199,6 +199,31 @@ func TestFailureScreenAndRetry(t *testing.T) {
 	}
 }
 
+// Error text can quote a command's stderr; its escapes mustn't reach the
+// terminal.
+func TestFailureScreenStripsEscapes(t *testing.T) {
+	h := start(t, New(testConfig(func(ctx context.Context, opts step.Options) error {
+		return errors.New("nft: \x1b]0;pwned\x07 syntax error")
+	})))
+	h.until("the failure", func(a *App) bool { return a.Finished() })
+	if raw := h.m.View().Content; strings.Contains(raw, "\x1b]0;") || !strings.Contains(stripANSI(raw), "syntax error") {
+		t.Errorf("failure view: %q", stripANSI(raw))
+	}
+}
+
+func TestPlanDetailsStripEscapes(t *testing.T) {
+	p := step.Plan{Files: []step.PlannedFile{{Path: "/etc/x", Mode: 0o644, Content: []byte("a\x1b]52;c;eA==\x07b\n")}}}
+	// The preview must show every byte that goes on disk, so control
+	// characters appear spelt out rather than vanish or act.
+	if got := planDetails(p); strings.Contains(got, "\x1b") || !strings.Contains(got, `a\x1b]52;c;eA==\x07b`) {
+		t.Errorf("planDetails = %q", got)
+	}
+	cmd := system.Cmd{Name: "printf", Args: []string{"\x1b[2J"}}
+	if got := commandLine(cmd); got != `printf '\x1b[2J'` {
+		t.Errorf("commandLine = %q", got)
+	}
+}
+
 func TestQuitQuestionScreen(t *testing.T) {
 	h := start(t, New(testConfig(func(ctx context.Context, opts step.Options) error {
 		hostSoFar(ctx, opts)

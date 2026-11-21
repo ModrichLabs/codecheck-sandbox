@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -95,7 +97,7 @@ func planSummary(p step.Plan, rows int) []string {
 		lines = append(lines, commandLine(c))
 	}
 	for _, f := range p.Files {
-		lines = append(lines, fmt.Sprintf("write %s (%04o, %d bytes)", f.Path, f.Mode.Perm(), len(f.Content)))
+		lines = append(lines, fmt.Sprintf("write %s (%04o, %d bytes)", visible(f.Path), f.Mode.Perm(), len(f.Content)))
 	}
 	if len(lines) == 0 {
 		lines = []string{"Nothing to run or write."}
@@ -121,8 +123,8 @@ func planDetails(p step.Plan) string {
 		}
 	}
 	for _, f := range p.Files {
-		fmt.Fprintf(&b, "\n── %s (%04o) ──\n", f.Path, f.Mode.Perm())
-		b.WriteString(strings.TrimRight(string(f.Content), "\n") + "\n")
+		fmt.Fprintf(&b, "\n── %s (%04o) ──\n", visible(f.Path), f.Mode.Perm())
+		b.WriteString(visible(strings.TrimRight(string(f.Content), "\n")) + "\n")
 	}
 	return strings.TrimLeft(b.String(), "\n")
 }
@@ -140,5 +142,29 @@ func shellQuote(s string) string {
 	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-") == "" {
 		return s
 	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return "'" + visible(strings.ReplaceAll(s, "'", `'\''`)) + "'"
+}
+
+// visible spells out control characters, invalid bytes and bidirectional
+// overrides (\x1b, ‮), so the preview shows every byte that will run
+// or go on disk, and none of them acts on the terminal.
+func visible(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size == 1:
+			fmt.Fprintf(&b, `\x%02x`, s[i])
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x80 && unicode.IsControl(r):
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case unicode.IsControl(r), r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+		i += size
+	}
+	return b.String()
 }
