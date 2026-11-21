@@ -15,9 +15,18 @@ _Updated 2026-11-21._
   `main`. Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes,
   so Claude gets no Bash at all.
 - **In progress:** M9, launch helper, on branch `feat/launch-helper` in its own
-  worktree. Every M9 task done; next come `/code-review medium`, the M9 pull
-  request, then M10 (guest build) once it merges. Untested until a real boot
-  (M15): `--parent-cgroup` inside the scope.
+  worktree. Every M9 task done. `/code-review medium` and a background security
+  review found 7 issues, all fixed test-first: two symlink races where root
+  chowned or chmodded by a path the user or `fcjail` controlled (now through
+  descriptors, with the result folder handed over last); systemd's
+  `RuntimeMaxSec` firing before `Wait`'s kill, so timeouts looked like successes
+  (now `Wait` kills at the limit and the scope's limit adds a tenth as a
+  backstop); `debugfs` open failures read as missing files (only "File not
+  found" now means missing, and root hands `debugfs` the disk as `/dev/stdin`);
+  cleanup after a failed stop; a timed-out build reported as a results failure;
+  `nft` without `CleanEnv`. Next: the M9 pull request, then M10 (guest build)
+  once it merges. Untested until a real boot (M15): `--parent-cgroup` inside the
+  scope.
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.

@@ -191,18 +191,29 @@ func extractOne(ctx context.Context, e Env, disk, dst, src string, limit int64) 
 	return true, nil
 }
 
-// debugfsCat streams one file from the disk into w. debugfs exits 0 even
-// for a missing file and only complains on stderr, so any stderr past its
-// version banner means "not found".
+// notFound ends the line debugfs prints for a missing file.
+const notFound = ": File not found by ext2_lookup"
+
+// debugfsCat streams one file from the disk into w. Root opens the disk and
+// hands it to debugfs as stdin, so whether nobody may enter the run folder
+// never matters. debugfs exits 0 whatever happens and reports on stderr: a
+// "File not found" line means the file is missing, and any other line past
+// the version banner (such as a failure to open the disk) is an error.
 func debugfsCat(ctx context.Context, e Env, disk, path string, w io.Writer) (bool, error) {
+	f, err := os.OpenFile(disk, os.O_RDONLY|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
 	var stderr bytes.Buffer
 	res, err := e.Run.Run(ctx, system.Cmd{
 		Name: "setpriv",
 		Args: []string{"--reuid=" + nobody, "--regid=" + nobody, "--clear-groups", "--no-new-privs",
-			"--inh-caps=-all", "--bounding-set=-all", "--", "debugfs", "-R", "cat " + path, disk},
-		CleanEnv: true,
-		Stdout:   w,
-		Stderr:   &capped{w: &stderr, left: 4096},
+			"--inh-caps=-all", "--bounding-set=-all", "--", "debugfs", "-R", "cat " + path, "/dev/stdin"},
+		CleanEnv:  true,
+		StdinFile: f,
+		Stdout:    w,
+		Stderr:    &capped{w: &stderr, left: 4096},
 	})
 	if c, ok := w.(*capped); ok && c.over {
 		// Past the cap, debugfs dies of SIGPIPE; the caller sees c.over.
@@ -214,12 +225,18 @@ func debugfsCat(ctx context.Context, e Env, disk, path string, w io.Writer) (boo
 	if res.Code != 0 {
 		return false, fmt.Errorf("debugfs exit %d: %s", res.Code, strings.TrimSpace(stderr.String()))
 	}
+	missing := false
 	for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
-		if line != "" && !strings.HasPrefix(line, "debugfs ") {
-			return false, nil
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "" || strings.HasPrefix(line, "debugfs "): // the version banner
+		case strings.HasSuffix(line, notFound):
+			missing = true
+		default:
+			return false, fmt.Errorf("debugfs: %s", line)
 		}
 	}
-	return true, nil
+	return !missing, nil
 }
 
 // capped passes at most left bytes to w, then fails every write.

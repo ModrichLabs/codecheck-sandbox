@@ -74,7 +74,7 @@ func stripHandles(v any) any {
 // Live hashes the loaded table, read with nft's JSON output. root asks for
 // the privilege tool; cc-launch, already root, passes false.
 func Live(ctx context.Context, r system.Runner, table string, root bool) (string, error) {
-	res, err := r.Run(ctx, system.Cmd{Name: "nft", Args: []string{"-j", "list", "table", "inet", table}, Root: root})
+	res, err := r.Run(ctx, system.Cmd{Name: "nft", Args: []string{"-j", "list", "table", "inet", table}, Root: root, CleanEnv: true})
 	if err != nil {
 		return "", err
 	}

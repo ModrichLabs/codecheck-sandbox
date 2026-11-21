@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,24 +20,41 @@ import (
 // hostRunner plays every command a run makes: nft, mkfs.ext4, systemd-run,
 // systemctl and debugfs (through setpriv).
 type hostRunner struct {
-	nft   []byte
-	disk  *diskRunner
-	boot  func() // runs when systemd-run starts the VM
-	names []string
+	mu       sync.Mutex
+	nft      []byte
+	disk     *diskRunner
+	boot     func() // runs when systemd-run starts the VM
+	bootCode int    // systemd-run's exit code
+	killErr  error  // what systemctl kill returns
+	killed   bool
+	names    []string
+}
+
+func (h *hostRunner) wasKilled() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.killed
 }
 
 func (h *hostRunner) Run(ctx context.Context, c system.Cmd) (system.Result, error) {
+	h.mu.Lock()
 	h.names = append(h.names, c.Name)
+	h.mu.Unlock()
 	switch c.Name {
 	case "nft":
 		return system.Result{Stdout: h.nft}, nil
-	case "mkfs.ext4", "systemctl":
+	case "mkfs.ext4":
 		return system.Result{}, nil
+	case "systemctl":
+		h.mu.Lock()
+		h.killed = h.killErr == nil
+		h.mu.Unlock()
+		return system.Result{}, h.killErr
 	case "systemd-run":
 		if h.boot != nil {
 			h.boot()
 		}
-		return system.Result{}, nil
+		return system.Result{Code: h.bootCode}, nil
 	case "setpriv":
 		return h.disk.Run(ctx, c)
 	}
@@ -147,6 +167,75 @@ func TestRunKillsAndCleansUpWhenInterrupted(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(r.env.Paths.JailerBase, "firecracker", r.id.String())); !os.IsNotExist(err) {
 		t.Errorf("the jail stayed after the interruption: %v", err)
+	}
+}
+
+// runningUntilKilled reports the scope populated until systemctl kill lands.
+type runningUntilKilled struct {
+	*fakeProc
+	path string
+	h    *hostRunner
+}
+
+func (p *runningUntilKilled) ReadFile(path string) ([]byte, error) {
+	if path != p.path {
+		return p.fakeProc.ReadFile(path)
+	}
+	if p.h.wasKilled() {
+		return nil, os.ErrNotExist
+	}
+	return []byte("populated 1\n"), nil
+}
+
+func scopeEvents(r *rig) string {
+	return filepath.Join(r.env.Paths.CgroupRoot, "system.slice", "codecheck-"+r.id.String()+".scope", "cgroup.events")
+}
+
+func TestRunLeavesTheJailWhenAFailedBootCantBeStopped(t *testing.T) {
+	r, h, m := runRig(t, reviewCfg(), nil)
+	h.bootCode = 1
+	h.killErr = errors.New("Failed to kill unit")
+	_, err := Run(context.Background(), r.env, m, r.id, false)
+	var be *BootError
+	if !errors.As(err, &be) {
+		t.Fatalf("Run = %v, want a BootError", err)
+	}
+	if _, serr := os.Stat(filepath.Join(r.env.Paths.JailerBase, "firecracker", r.id.String())); serr != nil {
+		t.Errorf("Run removed the jail under a VM it couldn't stop: %v", serr)
+	}
+}
+
+func TestRunBuildTimeoutReportsTheTimeout(t *testing.T) {
+	cfg := guestinit.Config{Mode: guestinit.ModeBuild, RunID: "cc-20261121-101500-a1b2c3"}
+	r, h, m := runRig(t, cfg, nil) // no marker: the build never finished
+	os.Remove(r.env.Paths.ImagesSum)
+	r.env.Proc = &runningUntilKilled{fakeProc: r.proc, path: scopeEvents(r), h: h}
+	defer func(s vmShape) { shapes[guestinit.ModeBuild] = s }(shapes[guestinit.ModeBuild])
+	s := shapes[guestinit.ModeBuild]
+	s.limit = 20 * time.Millisecond
+	shapes[guestinit.ModeBuild] = s
+
+	_, err := Run(context.Background(), r.env, m, r.id, true)
+	if !errors.Is(err, ErrTimeout) {
+		t.Errorf("Run = %v, want ErrTimeout among the errors", err)
+	}
+}
+
+func TestScopeBackstopOutlastsTheWait(t *testing.T) {
+	// systemd's own limit must fire after Wait's kill, or a timed-out run
+	// looks like one that finished.
+	for mode, s := range shapes {
+		id, _ := ParseRunID("cc-20261121-101500-a1b2c3")
+		argv := (&Jail{Unit: "codecheck-" + id.String() + ".scope"}).Argv(Env{Paths: DefaultPaths()}, Job{ID: id, Config: guestinit.Config{Mode: mode}})
+		var max int
+		for _, a := range argv {
+			if v, ok := strings.CutPrefix(a, "RuntimeMaxSec="); ok {
+				max, _ = strconv.Atoi(v)
+			}
+		}
+		if time.Duration(max)*time.Second <= s.limit {
+			t.Errorf("%s: RuntimeMaxSec=%d, want more than Wait's %v", mode, max, s.limit)
+		}
 	}
 }
 

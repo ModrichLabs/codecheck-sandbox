@@ -35,6 +35,9 @@ type Cmd struct {
 	// and Result then holds none of that stream. Use them for output too
 	// large to keep in memory.
 	Stdout, Stderr io.Writer
+	// StdinFile, when set, becomes the command's stdin as is (instead of
+	// Stdin), so the command can reopen it as /dev/stdin and seek in it.
+	StdinFile *os.File
 	// Dir sets the working folder; empty keeps the caller's.
 	Dir string
 	// Chroot runs the command with this folder as its root. Name and Dir then
@@ -93,6 +96,9 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	if len(c.Stdin) > 0 {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
 	} // A nil Stdin makes os/exec connect /dev/null.
+	if c.StdinFile != nil {
+		cmd.Stdin = c.StdinFile
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if c.Stdout != nil {

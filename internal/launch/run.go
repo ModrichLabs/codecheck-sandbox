@@ -58,13 +58,19 @@ func Run(ctx context.Context, e Env, m Mounter, id RunID, build bool) (Result, e
 	argv := j.Argv(e, job)
 	res, err := e.Run.Run(ctx, system.Cmd{Name: argv[0], Args: argv[1:], CleanEnv: true, Stdout: e.Console, Stderr: e.Console})
 	if err == nil && res.Code != 0 {
-		err = fmt.Errorf("%s exit %d: %s", argv[0], res.Code, strings.TrimSpace(string(res.Stderr)))
+		detail := strings.TrimSpace(string(res.Stderr))
+		if e.Console != nil {
+			detail = "see the console output above"
+		}
+		err = fmt.Errorf("%s exit %d: %s", argv[0], res.Code, detail)
 	}
 	if err != nil && ctx.Err() == nil {
-		// The scope may hold a half-started VM; take it down before cleanup.
-		_ = stop(e, j)
-		_ = j.Cleanup(e, m)
-		return Result{Job: job}, &BootError{err}
+		// The scope may hold a half-started VM; take it down first, and leave
+		// the jail in place when that fails.
+		if serr := stop(e, j); serr != nil {
+			return Result{Job: job}, &BootError{errors.Join(err, serr)}
+		}
+		return Result{Job: job}, &BootError{errors.Join(err, j.Cleanup(e, m))}
 	}
 
 	waitErr := j.Wait(ctx, e, Limit(job.Config.Mode), pollEvery)
@@ -88,7 +94,8 @@ func Run(ctx context.Context, e Env, m Mounter, id RunID, build bool) (Result, e
 	}
 	copied, err := Extract(ctx, e, job)
 	if err != nil {
-		return Result{Job: job, Copied: copied}, &ExtractError{err}
+		// A timed-out build lacks its marker: report the timeout as the cause.
+		return Result{Job: job, Copied: copied}, errors.Join(waitErr, &ExtractError{err})
 	}
 	if err := Tidy(e, job); err != nil {
 		return Result{Job: job, Copied: copied}, err

@@ -113,6 +113,10 @@ func TestLiveSkipsThePrivilegeToolWhenAlreadyRoot(t *testing.T) {
 	if f.Calls()[0].Root {
 		t.Error("Live asked for the privilege tool with root=false")
 	}
+	// Running as root already, nft must not inherit the caller's environment.
+	if !f.Calls()[0].CleanEnv {
+		t.Error("Live ran nft with the inherited environment")
+	}
 }
 
 func TestLiveRuleHashRunsNftAsRoot(t *testing.T) {

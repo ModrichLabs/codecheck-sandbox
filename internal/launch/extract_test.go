@@ -19,12 +19,22 @@ import (
 // on the disk to its contents, and a missing path makes debugfs complain on
 // stderr while still exiting 0, as the real one does.
 type diskRunner struct {
-	files map[string]string
-	calls []system.Cmd
+	files    map[string]string
+	calls    []system.Cmd
+	disks    []string // the files handed over as stdin
+	openFail bool     // debugfs can't open the disk, and still exits 0
 }
 
 func (d *diskRunner) Run(_ context.Context, c system.Cmd) (system.Result, error) {
 	d.calls = append(d.calls, c)
+	if c.StdinFile != nil {
+		d.disks = append(d.disks, c.StdinFile.Name())
+	}
+	if d.openFail {
+		msg := "debugfs 1.47.4 (6-Mar-2025)\ndebugfs: Permission denied while trying to open /dev/stdin\ncat: Filesystem not open\n"
+		c.Stderr.Write([]byte(msg))
+		return system.Result{}, nil
+	}
 	req := c.Args[slices.Index(c.Args, "-R")+1] // "cat /name"
 	content, ok := d.files[strings.TrimPrefix(req, "cat ")]
 	if !ok {
@@ -80,13 +90,26 @@ func TestExtractCopiesTheFixedList(t *testing.T) {
 		t.Errorf("stream.jsonl mode %v, want 0600", fi.Mode().Perm())
 	}
 
-	// debugfs never runs as root: it parses a disk the guest wrote.
-	for _, c := range d.calls {
+	// debugfs never runs as root: it parses a disk the guest wrote. Root
+	// opens the disk and hands it over as stdin, so the run folder's
+	// permissions never decide whether nobody can read it.
+	for i, c := range d.calls {
 		want := []string{"--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs",
 			"--inh-caps=-all", "--bounding-set=-all", "--", "debugfs", "-R"}
-		if c.Name != "setpriv" || !slices.Equal(c.Args[:len(want)], want) || c.Args[len(c.Args)-1] != filepath.Join(dir, "out.ext4") || c.Root {
+		if c.Name != "setpriv" || !slices.Equal(c.Args[:len(want)], want) || c.Args[len(c.Args)-1] != "/dev/stdin" || c.Root {
 			t.Errorf("call = %s %v", c.Name, c.Args)
 		}
+		if i >= len(d.disks) || d.disks[i] != filepath.Join(dir, "out.ext4") {
+			t.Errorf("call %d got stdin %v, want the output disk", i, d.disks)
+		}
+	}
+}
+
+func TestExtractFailsWhenDebugfsCantOpenTheDisk(t *testing.T) {
+	e, job, d, _ := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	d.openFail = true
+	if got, err := Extract(context.Background(), e, job); err == nil {
+		t.Errorf("Extract = %v, nil; an unreadable disk must not pass for missing files", got)
 	}
 }
 
@@ -159,8 +182,8 @@ func TestExtractBuildChecksTheMarker(t *testing.T) {
 	if _, err := Extract(context.Background(), e, job); err != nil {
 		t.Fatalf("Extract build: %v", err)
 	}
-	if len(d.calls) != 1 || !strings.HasSuffix(d.calls[0].Args[len(d.calls[0].Args)-1], "rootfs.ext4") {
-		t.Errorf("calls = %+v", d.calls)
+	if len(d.calls) != 1 || len(d.disks) != 1 || !strings.HasSuffix(d.disks[0], "rootfs.ext4") {
+		t.Errorf("calls = %+v, disks %v; want one read of rootfs.ext4", d.calls, d.disks)
 	}
 
 	for name, marker := range map[string]map[string]string{

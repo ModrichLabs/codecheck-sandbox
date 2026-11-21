@@ -188,9 +188,10 @@ func makeDisk(ctx context.Context, e Env, path string, size int64) error {
 }
 
 // Argv returns the command that boots the VM: a transient scope with the
-// mode's time limit, around the jailer with spike S1's flags. The jailer's
-// cgroup goes inside the scope, so the time limit and the wait cover
-// Firecracker after --new-pid-ns detaches it.
+// mode's time limit plus a tenth (a backstop: Wait kills at the limit
+// itself, so a timeout gets reported as one), around the jailer with spike
+// S1's flags. The jailer's cgroup goes inside the scope, so the time limit
+// and the wait cover Firecracker after --new-pid-ns detaches it.
 func (j *Jail) Argv(e Env, job Job) []string {
 	shape := shapes[job.Config.Mode]
 	limit := int64(OutDiskSize)
@@ -200,7 +201,7 @@ func (j *Jail) Argv(e Env, job Job) []string {
 	return []string{
 		"systemd-run", "--scope", "--quiet", "--collect",
 		"--unit=" + strings.TrimSuffix(j.Unit, ".scope"), "--slice=system.slice",
-		"-p", "RuntimeMaxSec=" + strconv.Itoa(int(shape.limit.Seconds())),
+		"-p", "RuntimeMaxSec=" + strconv.Itoa(int((shape.limit + shape.limit/10).Seconds())),
 		"--",
 		e.Paths.Jailer,
 		"--id", job.ID.String(),
@@ -226,12 +227,12 @@ var killGrace = 30 * time.Second
 var ErrStuck = errors.New("the VM's scope still holds processes after a kill")
 
 // Wait polls the scope's cgroup.events until nothing runs in it (or the
-// scope has gone). Past limit plus a tenth it kills the scope and returns
-// ErrTimeout once the scope empties, or ErrStuck after killGrace. The caller
-// cleans up only after a nil or ErrTimeout result.
+// scope has gone). Past limit it kills the scope and returns ErrTimeout
+// once the scope empties, or ErrStuck after killGrace. The caller cleans up
+// only after a nil or ErrTimeout result.
 func (j *Jail) Wait(ctx context.Context, e Env, limit, poll time.Duration) error {
 	events := filepath.Join(e.Paths.CgroupRoot, "system.slice", j.Unit, "cgroup.events")
-	deadline := time.Now().Add(limit + limit/10)
+	deadline := time.Now().Add(limit)
 	killed := false
 	var killedAt time.Time
 	for {
