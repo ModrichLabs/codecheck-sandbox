@@ -1051,9 +1051,15 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     Tests build a real disk and read it back with the real `debugfs`; a
     throwaway test staged the real archive of the pinned CodeCheck commit (12
     files, pax header skipped).
-- [ ] **Launch client** (`launch/client.go`): run `cc-launch` through the
+- [x] **Launch client** (`launch/client.go`): run `cc-launch` through the
       privilege tool with its console streamed and its exit code kept; M11
       reuses it.
+  - _Done:_ `system.PrivRunner.RunStreaming` wraps a root command for the
+    privilege tool and streams its stderr, keeping the first 4 KB to spot an
+    expired login (`ErrLoginExpired`). `launch.Client` has `Run`, `Build` and
+    `Clean`, returns `*ExitError` with a plain-language meaning for each exit
+    code, and the codes now live in `launch` for both sides. The import guard
+    still passes.
 - [ ] **Build** (`guest/build.go`): the four steps above, plus installing the
       images, `images.sha256` and a build stamp, then `cc-launch clean`.
 - [ ] **Steps** (`guest/steps.go`): `guest-firecracker` and `guest-image`.
