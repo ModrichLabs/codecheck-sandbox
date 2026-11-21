@@ -14,20 +14,15 @@ _Updated 2026-11-21._
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
   launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
   precomputes diff-mode changes, so Claude gets no Bash at all.
-- **In progress:** M10, guest build, on branch `feat/guest-build` in its own
-  worktree. Every M10 task done (broken down into six, since nothing installed
-  Firecracker yet). `/code-review medium` found 7 issues; 6 fixed test-first:
-  the kernel got installed from the user's cache unchecked (now hashed as the
-  root-owned copy and refused unless it equals its pin, and `guest-image`
-  compares it with the stamp); a failed build recorded nothing for uninstall; a
-  rebuild failing halfway left new files beside old sums (now everything stages
-  as `*.new` and four renames swap it in last); a nil dereference in `treeSize`;
-  `extractMembers` could keep one binary of two; `Base` mixed its own pin with
-  the global one. Declined: a changelog entry, since no command reaches these
-  steps until M13 (as for M7–M9). Next: the M10 pull request, then M11 (review
-  pipeline) once it merges. Untested until a real boot (M15): `--parent-cgroup`
-  inside the scope, and the whole build through `cc-launch` (only the builder's
-  initramfs and `cc-guestinit` booted for real so far).
+- **Waiting for the maintainer's merge:** M10, guest build, PR #13 on
+  `feat/guest-build`, reviewed and fixed.
+- **In progress:** M11, review pipeline, on branch `feat/review-pipeline`,
+  stacked on `feat/guest-build` (it uses M10's `launch.Client`); rebase onto
+  `main` once #13 merges. Every M11 task done; next come `/code-review medium`
+  and the M11 pull request, then M12 (interface). Untested until a real boot
+  (M15): `--parent-cgroup` inside the scope, and full builds and reviews through
+  `cc-launch` (only the builder's initramfs and `cc-guestinit` booted for real
+  so far).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -1172,11 +1167,26 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     probe got out). `WriteReport` writes `report.md` (the result text, or an
     explanation) and `summary.json` at 0600 in a 0700 folder.
 
-- [ ] `review/run.go`: write the run folder through `sudo tee`, call
+- [x] `review/run.go`: write the run folder through `sudo tee`, call
       `sudo -n cc-launch <id>`, and stream status events from the VM's serial
       log.
   - Live status shows elapsed time and VM state (spec §2, as amended); cost
     appears in the final summary from `postrun.go`.
+  - _Done:_ `Pipeline.Review(ctx, Options{Source, BudgetUSD})` and
+    `Pipeline.Selftest(ctx, ports)` run the whole sequence: prepare (or an empty
+    code folder for a selftest), `MakeRunFiles`, `launch.StageRun` (root-owned
+    copies, the "sudo tee" step), the launcher, then copy the results back.
+    `report.md`, `summary.json` and the transcript, stderr and denials go into
+    `<reports>/<name>-<UTC time>` (0700, files 0600), with `cc-launch clean` and
+    the work folder removed on every way out. Results that came back after a
+    failed run (a timeout) still get analysed and reported, and the launcher's
+    error comes back too. A `statusWriter` on the console reports
+    `preparing → booting → running → finished → collecting → done`, keyed to
+    `cc-guestinit`'s own lines for this run id; each `Status` carries the start
+    time, so the interface ticks elapsed time itself. **For M13:** build
+    `Launcher` from `launch.Client` with the console, and add `--prompt` and
+    `--cwe`: today the config block has no key for them and `cc-claude`'s prompt
+    is fixed, so they need a validated config key and `cc-claude` support.
 
 ## M12. Interface (`internal/theme`, `internal/tui`)
 
