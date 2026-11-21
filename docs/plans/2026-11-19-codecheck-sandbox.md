@@ -1060,8 +1060,23 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `Clean`, returns `*ExitError` with a plain-language meaning for each exit
     code, and the codes now live in `launch` for both sides. The import guard
     still passes.
-- [ ] **Build** (`guest/build.go`): the four steps above, plus installing the
+- [x] **Build** (`guest/build.go`): the four steps above, plus installing the
       images, `images.sha256` and a build stamp, then `cc-launch clean`.
+  - _Done:_ `Builder.Build` takes its inputs through a `Sources` interface.
+    `PinnedSources` reuses a cached file that matches its pin. The Ubuntu base
+    needs `SHA256SUMS` with a good signature naming the pinned hash before the
+    image downloads, through a new capped, HTTPS-only `Downloader.Get`. The
+    builder writes `inputs.ext4`, `init.cpio` and `config.img` (mode `build`, a
+    fresh run id) into the user's cache, then installs the five run files
+    root-owned into a new run folder and calls `cc-launch build`. It hashes the
+    resulting `rootfs.ext4`, moves it to `/var/lib/codecheck-sandbox/`, installs
+    the kernel, and writes `images.sha256` (the installed files' actual hashes)
+    and `build.json`, a stamp of every input: the pins, the CA, `cc-guestinit`
+    and the guest scripts. Every path out after the run folder exists runs
+    `cc-launch clean`. Tests drive it with fakes, a real `mkfs.ext4` and the
+    real signed Ubuntu sums (a failed signature stops before the image
+    downloads). **For M13:** point `GuestInit` at the `cc-guestinit` shipped
+    beside the CLI, and stream the console to the progress view.
 - [ ] **Steps** (`guest/steps.go`): `guest-firecracker` and `guest-image`.
 
 ## M11. Review pipeline (`internal/review`)
