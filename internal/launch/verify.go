@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/guestinit"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/rulehash"
@@ -104,6 +105,9 @@ type Env struct {
 type Job struct {
 	ID     RunID
 	Config guestinit.Config
+	// Started marks the boot, so the post-run copy takes only this run's
+	// proxy denials; Run sets it.
+	Started time.Time
 }
 
 // Size caps for the run disks.

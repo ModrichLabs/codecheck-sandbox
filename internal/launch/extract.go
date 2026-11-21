@@ -1,8 +1,10 @@
 package launch
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -156,7 +159,70 @@ func Extract(ctx context.Context, e Env, job Job) (copied []string, err error) {
 			copied = append(copied, f.name)
 		}
 	}
+	if !job.Started.IsZero() {
+		if err := copyDenials(e, job.Started, filepath.Join(result, "proxy-denials.jsonl")); err != nil {
+			errs = append(errs, fmt.Errorf("proxy denials: %w", err))
+		}
+	}
 	return copied, errors.Join(errs...)
+}
+
+// maxDenials caps how many of a run's proxy denials get copied.
+const maxDenials = 1000
+
+// denial mirrors proxy.Denial: cc-launch can't import the proxy package,
+// which pulls in net/http.
+type denial struct {
+	Time   time.Time `json:"time"`
+	Reason string    `json:"reason"`
+	Client string    `json:"client,omitempty"`
+	Method string    `json:"method,omitempty"`
+	Host   string    `json:"host,omitempty"`
+	Path   string    `json:"path,omitempty"`
+}
+
+// copyDenials writes the proxy denials logged since the boot to dst, in the
+// still root-owned result folder: one VM runs at a time, so they all belong
+// to this run. It reads the previous rotation too, re-encodes each entry
+// (dropping anything that doesn't parse), and stops at maxDenials. An absent
+// log means the proxy denied nothing.
+func copyDenials(e Env, since time.Time, dst string) error {
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	n := 0
+	for _, p := range []string{e.Paths.DenyLog + ".1", e.Paths.DenyLog} {
+		f, err := os.Open(p)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			out.Close()
+			return err
+		}
+		sc := bufio.NewScanner(io.LimitReader(f, 16<<20))
+		sc.Buffer(make([]byte, 64<<10), 64<<10)
+		for sc.Scan() && n < maxDenials {
+			var d denial
+			if json.Unmarshal(sc.Bytes(), &d) != nil || d.Time.Before(since) {
+				continue
+			}
+			line, _ := json.Marshal(d)
+			if _, err := out.Write(append(line, '\n')); err != nil {
+				f.Close()
+				out.Close()
+				return err
+			}
+			n++
+		}
+		f.Close()
+	}
+	if err := out.Chown(e.ResultUID, e.ResultGID); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // extractOne copies one file off the disk into dst, removing dst again when

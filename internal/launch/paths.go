@@ -21,6 +21,7 @@ type Paths struct {
 	JailerBase  string
 	LockPath    string
 	CgroupRoot  string
+	DenyLog     string // the proxy's denial log; root reads it after a run
 }
 
 // DefaultPaths returns the footprint from spec §3.
@@ -40,5 +41,6 @@ func DefaultPaths() Paths {
 		JailerBase:  "/srv/jailer",
 		LockPath:    "/run/codecheck-sandbox/lock",
 		CgroupRoot:  "/sys/fs/cgroup",
+		DenyLog:     "/var/log/codecheck-sandbox/proxy.jsonl",
 	}
 }
