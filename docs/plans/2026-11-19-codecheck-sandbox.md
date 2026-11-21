@@ -1148,7 +1148,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `system.LookTool` (from `guest`) and `launch.StageRun`, which M10's builder
     now uses too, to install a run's files root-owned. Tests build real disks
     and read them back with `debugfs`.
-- [ ] `review/postrun.go`, from the extracted files:
+- [x] `review/postrun.go`, from the extracted files:
   - the result event (`subtype`, `is_error`, `total_cost_usd`)
   - refusal patterns
   - new proxy denials since the run started
@@ -1156,6 +1156,21 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
   - `report.md` and `summary.json`
 
   **Tests** use fixture transcripts: success, budget stop, refusal and empty.
+
+  - _Done:_ **Proxy denials:** the log sits in `/var/log/private` (root only)
+    and the sudo rule covers `cc-launch` alone, so `cc-launch` (holding the
+    one-VM lock) now copies the denials logged since its boot (`Job.Started`)
+    from the log and its last rotation, capped at 1000 and re-encoded, into
+    `result/proxy-denials.jsonl`, and a `hostnet` test keeps the proxy unit's
+    `--deny-log` path in step. **`Analyse(dir, mode)`** reads the result event
+    (subtype, `is_error`, cost, turns, duration, `permission_denials`), counts
+    `Task`/`Agent` calls as sub-agents, flags refusal phrases, counts denials
+    with up to ten hosts, reads `exit-code`, and for a selftest the `PASS`,
+    `FAIL` and `SUMMARY` lines. Outcomes: `ok`, `budget`
+    (`error_max_budget_usd`, a subtype checked in the pinned binary), `refused`,
+    `error`, `incomplete` (no exit code, result or summary) and `failed` (a
+    probe got out). `WriteReport` writes `report.md` (the result text, or an
+    explanation) and `summary.json` at 0600 in a 0700 folder.
 
 - [ ] `review/run.go`: write the run folder through `sudo tee`, call
       `sudo -n cc-launch <id>`, and stream status events from the VM's serial
