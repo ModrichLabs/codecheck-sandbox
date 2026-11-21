@@ -21,15 +21,17 @@ const consentText = "Help improve codecheck-sandbox by sending anonymous counts:
 	"Change your mind any time with codecheck-sandbox telemetry on or off. Below, exactly what gets sent:"
 
 // Consent asks once whether to send telemetry. It starts on No, and only a
-// deliberate y or → then Enter turns it on.
+// deliberate y or → then Enter turns it on. Ctrl+C, q or Esc leaves with
+// no answer (Aborted), so setup can stop.
 type Consent struct {
-	th     theme.Theme
-	vp     viewport.Model
-	sample string
-	yes    bool
-	done   bool
-	width  int
-	height int
+	th      theme.Theme
+	vp      viewport.Model
+	sample  string
+	yes     bool
+	done    bool
+	aborted bool
+	width   int
+	height  int
 }
 
 // NewConsent builds the consent screen with a sample rendered from the real
@@ -64,6 +66,9 @@ func SamplePayload(cliVersion string) string {
 // Choice reports the answer: true only for a clear yes.
 func (c *Consent) Choice() bool { return c.yes }
 
+// Aborted reports a screen left with Ctrl+C, q or Esc: no answer given.
+func (c *Consent) Aborted() bool { return c.aborted }
+
 // Done reports an answered screen.
 func (c *Consent) Done() bool { return c.done }
 
@@ -84,10 +89,16 @@ func (c *Consent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.yes = false
 		case "left", "h":
 			c.yes = false
-		case "right", "l", "tab":
+		case "right", "l":
+			c.yes = true
+		case "tab":
 			c.yes = !c.yes
 		case "enter":
 			c.done = true
+			return c, tea.Quit
+		case "ctrl+c", "q", "esc":
+			// Leaving answers nothing, and telemetry stays off.
+			c.done, c.aborted, c.yes = true, true, false
 			return c, tea.Quit
 		default:
 			var cmd tea.Cmd
@@ -130,7 +141,8 @@ func (c *Consent) View() tea.View {
 		"",
 		button("No, keep it off", !c.yes) + "  " + button("Yes, send anonymous counts", c.yes),
 		"",
-		c.th.KeyHelp(theme.Key{Name: "←/→", Does: "choose"}, theme.Key{Name: "↑/↓", Does: "scroll"}, theme.Key{Name: "Enter", Does: "confirm"}),
+		c.th.KeyHelp(theme.Key{Name: "←/→", Does: "choose"}, theme.Key{Name: "↑/↓", Does: "scroll"},
+			theme.Key{Name: "Enter", Does: "confirm"}, theme.Key{Name: "q", Does: "quit"}),
 	}, "\n")
 	v := tea.NewView(c.th.Panel("CodeCheck Sandbox setup", body, c.width))
 	v.AltScreen = true

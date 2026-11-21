@@ -39,7 +39,7 @@ func TestCheckKeyAgainstTheModelsEndpoint(t *testing.T) {
 		want   string
 	}{
 		{200, ""},
-		{401, "rejected"},
+		{401, "refused"},
 		{403, "permission"},
 		{429, "429"},
 		{500, "500"},

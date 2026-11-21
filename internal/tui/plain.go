@@ -95,9 +95,8 @@ func RunPlain(ctx context.Context, cfg PlainConfig) error {
 			fmt.Fprintf(out, "Run %s? [y/N] ", req.title)
 			req.reply <- readYes(in)
 		case d := <-done:
-			if errors.Is(d.err, ErrNeedsYes) {
-				log.Error(ErrNeedsYes.Error())
-			}
+			// The engine's StepFailed event has already printed the cause,
+			// ErrNeedsYes included.
 			return d.err
 		}
 	}

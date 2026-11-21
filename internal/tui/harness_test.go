@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -172,8 +171,6 @@ func (s fakeStep) Check(context.Context) (step.Status, error) { return step.Stat
 func (s fakeStep) Plan(context.Context) (step.Plan, error)    { return step.Plan{}, nil }
 func (s fakeStep) Apply(context.Context) error                { return nil }
 func (s fakeStep) Undo(context.Context, []step.Item) error    { return nil }
-
-var errBlocked = errors.New("blocked")
 
 // setupSteps mirrors a slice of the real setup.
 var setupSteps = []StepInfo{

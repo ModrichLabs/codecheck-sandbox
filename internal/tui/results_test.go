@@ -188,10 +188,10 @@ func TestUninstallList(t *testing.T) {
 	golden(t, "uninstall", s)
 	removes, keeps, _ := strings.Cut(s, "These stay")
 	if !strings.Contains(removes, "fcjail") || strings.Contains(removes, "e2fsprogs") {
-		t.Errorf("the remove list is wrong:\n%s", removes)
+		t.Errorf("the remove list came out wrong:\n%s", removes)
 	}
 	if !strings.Contains(keeps, "e2fsprogs") || !strings.Contains(keeps, "~/codecheck-reports") {
-		t.Errorf("the keep list is wrong:\n%s", keeps)
+		t.Errorf("the keep list came out wrong:\n%s", keeps)
 	}
 }
 

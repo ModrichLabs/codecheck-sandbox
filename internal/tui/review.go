@@ -47,6 +47,7 @@ type Review struct {
 
 	state   review.State
 	started time.Time
+	ended   time.Time // when the run returned; the clock stops there
 	spin    spinner.Model
 
 	done           bool
@@ -131,7 +132,7 @@ func (r *Review) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return r, r.listen()
 	case reviewDoneMsg:
-		r.done, r.result, r.err = true, msg.result, msg.err
+		r.done, r.result, r.err, r.ended = true, msg.result, msg.err, r.now()
 		r.showReport()
 		if r.stopping {
 			return r, tea.Quit
@@ -216,7 +217,7 @@ func (r *Review) summaryLines() []string {
 	}
 	s := r.result.Summary
 	head := r.th.Heading.Render("Outcome: "+string(s.Outcome)) + r.th.Faint.Render(fmt.Sprintf(
-		"  ·  US$%.2f  ·  %d sub-agents  ·  %s", s.Result.CostUSD, s.SubAgents, elapsed(r.now().Sub(r.started))))
+		"  ·  US$%.2f  ·  %d sub-agents  ·  %s", s.Result.CostUSD, s.SubAgents, r.elapsed()))
 	lines := []string{head}
 	for _, w := range s.Warnings {
 		lines = append(lines, r.th.Warning.Render("! "+sanitise(w)))
@@ -264,7 +265,7 @@ func (r *Review) statusLines() []string {
 	lines := []string{
 		r.th.Heading.Render(sanitise(r.target)),
 		"",
-		r.th.Body.Render(fmt.Sprintf("%s %s", r.state, elapsed(r.now().Sub(r.started)))),
+		r.th.Body.Render(fmt.Sprintf("%s %s", r.state, r.elapsed())),
 		"",
 	}
 	reached := true
@@ -279,6 +280,19 @@ func (r *Review) statusLines() []string {
 		lines = append(lines, mark+" "+string(s))
 	}
 	return append(lines, "", r.th.Faint.Render("Cost and sub-agent counts arrive once the VM finishes."))
+}
+
+// elapsed gives the run's time so far, frozen once it ends, and zero before
+// the first status says when it started.
+func (r *Review) elapsed() string {
+	if r.started.IsZero() {
+		return elapsed(0)
+	}
+	end := r.now()
+	if !r.ended.IsZero() {
+		end = r.ended
+	}
+	return elapsed(end.Sub(r.started))
 }
 
 // elapsed formats a duration as 7m05s or 1h02m.

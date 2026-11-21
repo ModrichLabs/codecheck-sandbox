@@ -19,8 +19,17 @@ _Updated 2026-11-22._
   (based on #13); M12, interface, on `feat/interface` (based on #14). Each gets
   rebased onto `main` once the one below merges.
 - **In progress:** M12, interface: every task done (theme, root model, screens,
-  sudo handover, forms and consent, doctor/review/uninstall, plain mode). Next:
-  `/code-review medium`, then the pull request. Then M13 (commands).
+  sudo handover, forms and consent, doctor/review/uninstall, plain mode).
+  `/code-review medium` found 10 issues; 9 fixed test-first: a phase with many
+  steps (the host phase holds 15) crashed the screen in a short terminal (now a
+  step window that keeps the current step in view); a network failure in the key
+  check stuck for that key (now only firm answers, `ErrKeyRejected`, get
+  remembered); the consent screen ignored Ctrl+C, q and Esc (now `Aborted`); the
+  login keep-alive outlived a finished run; the finished review's time kept
+  growing, and showed a huge figure before the first status; plain mode printed
+  the `--yes` hint twice; → toggled instead of picking Yes; one comment broke
+  E-Prime. Not taken: a changelog entry, since no command reaches these screens
+  until M13, which adds it. Next: the pull request, then M13 (commands).
 - **M11 notes:** `/code-review medium` found 9 issues, all fixed test-first:
   code disks sized by bytes alone ran out of blocks and inodes with many small
   files (now blocks and entries count, and `mkfs.ext4 -N` gets an inode each); a
@@ -1329,8 +1338,8 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     answers `Run <step>? [y/N]` (only `y` or `yes` counts, and end of input
     means no). With neither, a plan stops the run with `ErrNeedsYes`, since the
     engine treats a nil `Confirm` as approval. **For M13:** pass `os.Stdin` as
-    `In` for `--plain` on a terminal, nil when stdin isn't one; `Elevate` there
-    runs the login command straight on the terminal.
+    `In` for `--plain` on a terminal, nil when stdin has no terminal; `Elevate`
+    there runs the login command straight on the terminal.
 
 ## M13. Commands (`internal/cli`)
 

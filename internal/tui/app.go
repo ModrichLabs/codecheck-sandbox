@@ -98,7 +98,8 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(a.listen(), a.spin.Tick)
 }
 
-// Stop ends the engine run, if any; the interface stays as it was.
+// Stop ends the engine run and the login keep-alive, if any, and leaves the
+// interface unchanged.
 func (a *App) Stop() { a.cancel() }
 
 // Err returns how the run ended: nil, the engine's error or ErrQuit.
@@ -164,6 +165,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loginDoneMsg:
 		a.loginDone(msg)
 	case runDoneMsg:
+		// No root step follows, so the login mustn't stay fresh.
+		if a.stopKeepAlive != nil {
+			a.stopKeepAlive()
+		}
 		if errors.Is(a.err, ErrQuit) {
 			// The engine stopped because the user quit; its own error
 			// (context.Canceled) mustn't replace that.
@@ -267,12 +272,39 @@ func (a *App) quit() (tea.Model, tea.Cmd) {
 // sidebar and its " │ " divider.
 func (a *App) innerWidth() int { return max(a.width-4, 20) }
 func (a *App) mainWidth() int  { return max(a.innerWidth()-sidebarWidth-3, 10) }
-func (a *App) innerRows() int  { return max(a.height-2, 5) }
+func (a *App) innerRows() int  { return max(a.height-2, 1) }
+
+// stepRows caps the step list, keeping up to 8 rows (or half the pane) for
+// the screen's body; the host phase alone holds 15 steps.
+func (a *App) stepRows() int {
+	return max(a.innerRows()-4-min(8, a.innerRows()/2), 1)
+}
+
+// visibleSteps shows a window of the phase's steps that keeps the current
+// one in view.
+func (a *App) visibleSteps() []string {
+	all, limit := a.stepLines(), a.stepRows()
+	if len(all) <= limit {
+		return all
+	}
+	idx := 0
+	for _, s := range a.cfg.Steps {
+		if s.Phase != a.currentPhase() {
+			continue
+		}
+		if s.ID == a.current {
+			break
+		}
+		idx++
+	}
+	start := max(0, min(idx-limit/2, len(all)-limit))
+	return all[start : start+limit]
+}
 
 // bodyRows leaves room in the main pane for the heading, its gap, the step
-// list, a gap and the help line.
+// list, a gap and the help line; never below zero.
 func (a *App) bodyRows() int {
-	return a.innerRows() - 2 - len(a.stepLines()) - 1 - 2
+	return max(a.innerRows()-2-len(a.visibleSteps())-1-2, 0)
 }
 
 // View implements tea.Model.
@@ -304,7 +336,7 @@ func (a *App) View() tea.View {
 // the help line pinned to the bottom.
 func (a *App) mainLines() []string {
 	lines := []string{a.th.Heading.Render(a.phaseTitle()), ""}
-	lines = append(lines, a.stepLines()...)
+	lines = append(lines, a.visibleSteps()...)
 	lines = append(lines, "")
 	rows := a.bodyRows()
 	w := a.mainWidth()
@@ -334,6 +366,9 @@ func (a *App) mainLines() []string {
 		body = body[:rows]
 	}
 	lines = append(lines, body...)
+	if len(lines) > a.innerRows()-1 { // a tiny terminal: the help line wins
+		lines = lines[:max(a.innerRows()-1, 0)]
+	}
 	for len(lines) < a.innerRows()-1 {
 		lines = append(lines, "")
 	}

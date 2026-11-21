@@ -80,7 +80,7 @@ func TestConsentSampleHoldsOnlyEventFields(t *testing.T) {
 	for dec.More() {
 		var ev map[string]any
 		if err := dec.Decode(&ev); err != nil {
-			t.Fatalf("the sample isn't a run of JSON objects: %v\n%s", err, sample)
+			t.Fatalf("the sample holds something other than JSON objects: %v\n%s", err, sample)
 		}
 		n++
 		for k := range ev {

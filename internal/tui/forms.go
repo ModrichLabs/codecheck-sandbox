@@ -120,10 +120,19 @@ func keyValidator(check func(context.Context, string) error) func(string) error 
 		if key == lastKey {
 			return lastErr
 		}
-		lastKey, lastErr = key, check(context.Background(), key)
-		return lastErr
+		err := check(context.Background(), key)
+		// Remember only firm answers; a network failure or a busy server
+		// gets another try on the next Enter.
+		if err == nil || errors.Is(err, ErrKeyRejected) {
+			lastKey, lastErr = key, err
+		}
+		return err
 	}
 }
+
+// ErrKeyRejected marks a firm answer from Anthropic: the key itself got
+// refused (401 or 403), so checking it again can't help.
+var ErrKeyRejected = errors.New("Anthropic refused the key")
 
 // KeyChecker tests a key by listing models, from the host (the VM never
 // holds the key).
@@ -165,9 +174,9 @@ func (k KeyChecker) Check(ctx context.Context, key string) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized:
-		return errors.New("Anthropic rejected the key (401): check you copied all of it and that it hasn't been revoked")
+		return fmt.Errorf("%w (401): check you copied all of it and that nobody has revoked it", ErrKeyRejected)
 	case http.StatusForbidden:
-		return errors.New("the key lacks permission to list models (403); use a workspace key with API access")
+		return fmt.Errorf("%w (403): it lacks permission to list models; use a workspace key with API access", ErrKeyRejected)
 	}
 	return fmt.Errorf("Anthropic answered %d; try again shortly", resp.StatusCode)
 }
