@@ -1199,8 +1199,20 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M12. Interface (`internal/theme`, `internal/tui`)
 
-- [ ] `theme/theme.go`: Lip Gloss adaptive palette, plus the styles for sidebar,
+- [x] `theme/theme.go`: Lip Gloss adaptive palette, plus the styles for sidebar,
       panels, ✓ ✗ ⣾ · and keys. Test: renders at the ASCII profile.
+  - _Done:_ `theme.New(isDark)` picks each colour with `lipgloss.LightDark`;
+    `Mark(State)` gives ✓ ✗ ▸ ⣾ ·, `KeyHelp` the `[Enter] run   [q] quit` line,
+    and `Panel`/`AlertPanel` a rounded box of an exact width with its title set
+    into the top edge (Lip Gloss v2 draws no border titles). Tests run the
+    output through `colorprofile.Writer` at the ASCII and true-colour profiles.
+    **Versions** (each at least two weeks old): bubbletea v2.1.1, bubbles
+    v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour v2.0.1, and teatest v2 at
+    `c83711a` (March 2026); each task adds the ones it first imports. **Screen
+    tests:** golden files hold each screen's view as plain text at 100×30
+    (colour codes stripped), and teatest drives the key-press flows; raw teatest
+    output records the renderer's escape sequences, which would break on any
+    renderer change.
 - [ ] `tui/app.go`: the root model that routes engine events to screens. Quit
       through `q` or Ctrl-C asks for confirmation during root steps.
 - [ ] `tui/sidebar.go`, `tui/steplist.go`, `tui/confirm.go` (commands, the `d`
