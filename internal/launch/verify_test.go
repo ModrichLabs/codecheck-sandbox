@@ -111,7 +111,7 @@ func newRig(t *testing.T, cfg guestinit.Config) *rig {
 	root := t.TempDir()
 	p := DefaultPaths()
 	for _, f := range []*string{&p.StateDir, &p.RunsDir, &p.ImagesSum, &p.Kernel, &p.RootDisk, &p.RulesHash,
-		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot} {
+		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot, &p.DenyLog} {
 		*f = filepath.Join(root, *f)
 	}
 	kernel, rootfs := []byte("ELF kernel"), ext4Image(4096)

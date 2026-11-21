@@ -160,7 +160,7 @@ func hexSum(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(
 
 func buildRig(t *testing.T) (*Builder, *fakeSources, *fakeLauncher, *rootRunner) {
 	t.Helper()
-	if _, err := lookTool("mkfs.ext4"); err != nil {
+	if _, err := system.LookTool("mkfs.ext4"); err != nil {
 		t.Skip("no mkfs.ext4 here")
 	}
 	// The test kernel stands in for the pinned one.
@@ -171,7 +171,7 @@ func buildRig(t *testing.T) (*Builder, *fakeSources, *fakeLauncher, *rootRunner)
 	root := t.TempDir()
 	p := launch.DefaultPaths()
 	for _, f := range []*string{&p.StateDir, &p.RunsDir, &p.ImagesSum, &p.Kernel, &p.RootDisk, &p.RulesHash,
-		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot} {
+		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot, &p.DenyLog} {
 		*f = filepath.Join(root, *f)
 	}
 	os.MkdirAll(p.StateDir, 0o755)

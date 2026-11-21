@@ -1,8 +1,10 @@
 package launch
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -156,7 +159,94 @@ func Extract(ctx context.Context, e Env, job Job) (copied []string, err error) {
 			copied = append(copied, f.name)
 		}
 	}
+	if !job.Started.IsZero() {
+		if err := copyDenials(e, job.Started, filepath.Join(result, "proxy-denials.jsonl")); err != nil {
+			errs = append(errs, fmt.Errorf("proxy denials: %w", err))
+		}
+	}
 	return copied, errors.Join(errs...)
+}
+
+// maxDenials caps how many of a run's proxy denials get copied.
+const maxDenials = 1000
+
+// denial mirrors proxy.Denial: cc-launch can't import the proxy package,
+// which pulls in net/http.
+type denial struct {
+	Time   time.Time `json:"time"`
+	Reason string    `json:"reason"`
+	Client string    `json:"client,omitempty"`
+	Method string    `json:"method,omitempty"`
+	Host   string    `json:"host,omitempty"`
+	Path   string    `json:"path,omitempty"`
+}
+
+// copyDenials writes the proxy denials logged since the boot to dst, in the
+// still root-owned result folder: one VM runs at a time, so they all belong
+// to this run. It reads the previous rotation too, re-encodes each entry
+// (dropping anything that doesn't parse), and keeps maxDenials; a last line,
+// {"dropped":N}, counts the rest. An absent log means the proxy denied
+// nothing. On any failure dst goes, so no root-only file stays to break the
+// caller's report.
+func copyDenials(e Env, since time.Time, dst string) (err error) {
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			os.Remove(dst)
+		}
+	}()
+	kept, dropped := 0, 0
+	for _, p := range []string{e.Paths.DenyLog + ".1", e.Paths.DenyLog} {
+		if err := readDenials(p, since, func(d denial) error {
+			if kept >= maxDenials {
+				dropped++
+				return nil
+			}
+			kept++
+			line, _ := json.Marshal(d)
+			_, err := out.Write(append(line, '\n'))
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	if dropped > 0 {
+		if _, err := fmt.Fprintf(out, "{\"dropped\":%d}\n", dropped); err != nil {
+			return err
+		}
+	}
+	return out.Chown(e.ResultUID, e.ResultGID)
+}
+
+// readDenials hands each parsable entry of one log file stamped at or after
+// since to fn; an absent file holds none.
+func readDenials(path string, since time.Time, fn func(denial) error) error {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(io.LimitReader(f, 16<<20))
+	sc.Buffer(make([]byte, 64<<10), 64<<10)
+	for sc.Scan() {
+		var d denial
+		if json.Unmarshal(sc.Bytes(), &d) != nil || d.Time.Before(since) {
+			continue
+		}
+		if err := fn(d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // extractOne copies one file off the disk into dst, removing dst again when

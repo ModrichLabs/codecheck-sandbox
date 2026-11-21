@@ -14,20 +14,24 @@ _Updated 2026-11-21._
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
   launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
   precomputes diff-mode changes, so Claude gets no Bash at all.
-- **In progress:** M10, guest build, on branch `feat/guest-build` in its own
-  worktree. Every M10 task done (broken down into six, since nothing installed
-  Firecracker yet). `/code-review medium` found 7 issues; 6 fixed test-first:
-  the kernel got installed from the user's cache unchecked (now hashed as the
-  root-owned copy and refused unless it equals its pin, and `guest-image`
-  compares it with the stamp); a failed build recorded nothing for uninstall; a
-  rebuild failing halfway left new files beside old sums (now everything stages
-  as `*.new` and four renames swap it in last); a nil dereference in `treeSize`;
-  `extractMembers` could keep one binary of two; `Base` mixed its own pin with
-  the global one. Declined: a changelog entry, since no command reaches these
-  steps until M13 (as for M7–M9). Next: the M10 pull request, then M11 (review
-  pipeline) once it merges. Untested until a real boot (M15): `--parent-cgroup`
-  inside the scope, and the whole build through `cc-launch` (only the builder's
-  initramfs and `cc-guestinit` booted for real so far).
+- **Waiting for the maintainer's merge:** M10, guest build, PR #13 on
+  `feat/guest-build`, reviewed and fixed.
+- **In progress:** M11, review pipeline, on branch `feat/review-pipeline`,
+  stacked on `feat/guest-build` (it uses M10's `launch.Client`); rebase onto
+  `main` once #13 merges. Every M11 task done. `/code-review medium` found 9
+  issues, all fixed test-first: code disks sized by bytes alone ran out of
+  blocks and inodes with many small files (now blocks and entries count, and
+  `mkfs.ext4 -N` gets an inode each); a failed preparation left the clone
+  behind; a token in a source URL reached `summary.json` and git's error text
+  (now `DisplayTarget` and scrubbed errors); a failed denial copy left a
+  root-only file that broke the report; a transcript line over the scanner's
+  buffer hid the result; trimmed diff and status output; two runs in one second
+  shared a report folder; the size error printed the wrong number; denials past
+  the cap went uncounted (now a `{"dropped":N}` line). Next: the M11 pull
+  request (stacked on #13), then M12 (interface). Untested until a real boot
+  (M15): `--parent-cgroup` inside the scope, and full builds and reviews through
+  `cc-launch` (only the builder's initramfs and `cc-guestinit` booted for real
+  so far).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -1094,7 +1098,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M11. Review pipeline (`internal/review`)
 
-- [ ] `review/source.go`:
+- [x] `review/source.go`:
   - Clone a URL or local path into `~/codecheck-work/<name>-<ts>` (`--no-local`
     for paths).
   - `--pr N` fetches `pull/N/head`.
@@ -1106,16 +1110,49 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
   **Tests** use local git repos in `t.TempDir()`.
 
-- [ ] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
+  - _Done:_
+    `review.Prepare(ctx, runner, workRoot, Source{Target, PR, Base}, now)` makes
+    `<workRoot>/<name>-<UTC time>` (0700) and clones into `src/` with
+    `--no-local --template= --no-recurse-submodules`. A pull request checks out
+    `refs/pull/N/head` detached, with its merge base against `origin/HEAD` as
+    the baseline; `--base` resolves the ref (then `origin/<ref>`) and takes the
+    merge base with HEAD. After hardening, a diff review writes
+    `git diff --no-ext-diff --no-textconv --no-color <base>` and
+    `git status --porcelain` to `change/`. Refused: anything but `https://` or
+    an existing folder (`http`, `ssh`, `user@host:`, `ext::`, a leading `-`), a
+    ref with a leading `-` or odd characters, `--pr` with `--base`, and an
+    unknown base. Tests use real repositories, including a bare origin with
+    `refs/pull/7/head`.
+
+- [x] `review/harden.go`: rewrite `.git/config` to a clean minimum (core
       settings and remote only), and remove `.git/hooks`. **Test:** a planted
       `diff.external` and a hook both disappear.
-- [ ] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
+  - _Done:_ `.git/config` keeps only `[core]` (and `extensions.objectformat` for
+    a SHA-256 repository, which git needs to read it); `.git/hooks` and
+    `.git/config.worktree` go. **Deviation:** no remote either, since its URL
+    can carry a token (`https://user:token@…`) and the VM never fetches.
+    `review.git` runs host-side git with hooks off, `core.fsmonitor=false`,
+    HTTPS-only transport (file only for a local source), no system or global
+    config, and a clean environment. Tests use real git 2.56: planted
+    `diff.external`, `core.fsmonitor`, `core.pager`, a tokened remote, a hook
+    and a worktree config all disappear, and `git log` still works, for SHA-1
+    and SHA-256 repositories.
+- [x] `review/disks.go`: the code disk via `mkfs.ext4 -d` (unprivileged), sized
       from `du` plus 30%, with the clone at `src/` and any diff files at
       `change/`; the config block from `guestinit.Encode` (fixed 4 KB, no
       secrets: mode, budget, scope, baseline; the prompt lives in `cc-claude`);
       and a blank output disk. **Tests** run against small fixtures when
       `mkfs.ext4` exists.
-- [ ] `review/postrun.go`, from the extracted files:
+  - _Done:_ `MakeRunFiles(ctx, runner, dir, codeDir, cfg)` writes `config.img`
+    and `code.ext4`. The disk packs `codeDir` (now `Dir/code`, holding `src/`
+    and `change/`; `Prepare` moved the clone there so the disks can sit beside
+    it), sized at the files plus 30% plus 16 MiB, refused past `cc-launch`'s 16
+    GiB cap. A selftest gets an empty `src/`. **No blank output disk:**
+    `cc-launch` makes it since M9. Two shared helpers came out of this:
+    `system.LookTool` (from `guest`) and `launch.StageRun`, which M10's builder
+    now uses too, to install a run's files root-owned. Tests build real disks
+    and read them back with `debugfs`.
+- [x] `review/postrun.go`, from the extracted files:
   - the result event (`subtype`, `is_error`, `total_cost_usd`)
   - refusal patterns
   - new proxy denials since the run started
@@ -1124,11 +1161,41 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
   **Tests** use fixture transcripts: success, budget stop, refusal and empty.
 
-- [ ] `review/run.go`: write the run folder through `sudo tee`, call
+  - _Done:_ **Proxy denials:** the log sits in `/var/log/private` (root only)
+    and the sudo rule covers `cc-launch` alone, so `cc-launch` (holding the
+    one-VM lock) now copies the denials logged since its boot (`Job.Started`)
+    from the log and its last rotation, capped at 1000 and re-encoded, into
+    `result/proxy-denials.jsonl`, and a `hostnet` test keeps the proxy unit's
+    `--deny-log` path in step. **`Analyse(dir, mode)`** reads the result event
+    (subtype, `is_error`, cost, turns, duration, `permission_denials`), counts
+    `Task`/`Agent` calls as sub-agents, flags refusal phrases, counts denials
+    with up to ten hosts, reads `exit-code`, and for a selftest the `PASS`,
+    `FAIL` and `SUMMARY` lines. Outcomes: `ok`, `budget`
+    (`error_max_budget_usd`, a subtype checked in the pinned binary), `refused`,
+    `error`, `incomplete` (no exit code, result or summary) and `failed` (a
+    probe got out). `WriteReport` writes `report.md` (the result text, or an
+    explanation) and `summary.json` at 0600 in a 0700 folder.
+
+- [x] `review/run.go`: write the run folder through `sudo tee`, call
       `sudo -n cc-launch <id>`, and stream status events from the VM's serial
       log.
   - Live status shows elapsed time and VM state (spec §2, as amended); cost
     appears in the final summary from `postrun.go`.
+  - _Done:_ `Pipeline.Review(ctx, Options{Source, BudgetUSD})` and
+    `Pipeline.Selftest(ctx, ports)` run the whole sequence: prepare (or an empty
+    code folder for a selftest), `MakeRunFiles`, `launch.StageRun` (root-owned
+    copies, the "sudo tee" step), the launcher, then copy the results back.
+    `report.md`, `summary.json` and the transcript, stderr and denials go into
+    `<reports>/<name>-<UTC time>` (0700, files 0600), with `cc-launch clean` and
+    the work folder removed on every way out. Results that came back after a
+    failed run (a timeout) still get analysed and reported, and the launcher's
+    error comes back too. A `statusWriter` on the console reports
+    `preparing → booting → running → finished → collecting → done`, keyed to
+    `cc-guestinit`'s own lines for this run id; each `Status` carries the start
+    time, so the interface ticks elapsed time itself. **For M13:** build
+    `Launcher` from `launch.Client` with the console, and add `--prompt` and
+    `--cwe`: today the config block has no key for them and `cc-claude`'s prompt
+    is fixed, so they need a validated config key and `cc-claude` support.
 
 ## M12. Interface (`internal/theme`, `internal/tui`)
 
