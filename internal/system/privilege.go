@@ -1,9 +1,11 @@
 package system
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -87,16 +89,50 @@ func (p PrivRunner) Run(ctx context.Context, c Cmd) (Result, error) {
 	if c.Stdout != nil || c.Stderr != nil || c.StdinFile != nil || c.Dir != "" || c.Chroot != "" {
 		return Result{}, fmt.Errorf("%s: a root command can't stream output, change folder or chroot", c.Name)
 	}
-	args := []string{"-n"}
-	if p.Tool.Kind == ToolRun0 {
-		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
-	}
-	args = append(append(args, "--", c.Name), c.Args...)
-	res, err := p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: args, Stdin: c.Stdin})
+	res, err := p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: p.wrap(c), Stdin: c.Stdin})
 	if err == nil && res.Code != 0 && needsLogin(res.Stderr) {
 		return res, fmt.Errorf("%s: %w: %s", c.Name, ErrLoginExpired, strings.TrimSpace(string(res.Stderr)))
 	}
 	return res, err
+}
+
+// wrap builds the privilege tool's argument list for c.
+func (p PrivRunner) wrap(c Cmd) []string {
+	args := []string{"-n"}
+	if p.Tool.Kind == ToolRun0 {
+		args = []string{"--no-ask-password", "--setenv=LC_ALL=C"}
+	}
+	return append(append(args, "--", c.Name), c.Args...)
+}
+
+// RunStreaming runs c as root through the privilege tool while its stderr
+// streams to console as it happens, as cc-launch's serial log does. A copy of
+// the first few kilobytes stays behind to spot the tool's own "password
+// required" message, so an expired login still reports as ErrLoginExpired.
+func (p PrivRunner) RunStreaming(ctx context.Context, c Cmd, console io.Writer) (Result, error) {
+	if len(c.Env) > 0 || c.Stdout != nil || c.Stderr != nil || c.StdinFile != nil || c.Dir != "" || c.Chroot != "" {
+		return Result{}, fmt.Errorf("%s: RunStreaming takes only a name, arguments and stdin", c.Name)
+	}
+	head := &headBuffer{left: 4096}
+	res, err := p.Inner.Run(ctx, Cmd{Name: p.Tool.Path, Args: p.wrap(c), Stdin: c.Stdin, Stderr: io.MultiWriter(console, head)})
+	if err == nil && res.Code != 0 && needsLogin(head.buf.Bytes()) {
+		return res, fmt.Errorf("%s: %w", c.Name, ErrLoginExpired)
+	}
+	return res, err
+}
+
+// headBuffer keeps the first left bytes written to it and drops the rest.
+type headBuffer struct {
+	buf  bytes.Buffer
+	left int
+}
+
+func (h *headBuffer) Write(p []byte) (int, error) {
+	if n := min(len(p), h.left); n > 0 {
+		h.buf.Write(p[:n])
+		h.left -= n
+	}
+	return len(p), nil
 }
 
 // loginReplies pair the prefix a privilege tool puts on its own messages with
