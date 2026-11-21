@@ -67,6 +67,12 @@ type Stamp struct {
 // StampPath names the stamp beside the images.
 func StampPath(p launch.Paths) string { return filepath.Join(p.StateDir, "build.json") }
 
+// buildPins holds the pins a build answers to; tests swap in their own
+// stand-in kernel's hash.
+var buildPins = struct{ Kernel, Base, Claude, CodeCheck string }{
+	pins.Kernel.SHA256, pins.Ubuntu.SquashFSSHA256, pins.ClaudeCode.BinarySHA256, pins.CodeCheck.Commit,
+}
+
 // WantStamp describes the image the current pins and files would build.
 func WantStamp(guestInit, caCert string) (Stamp, error) {
 	initSum, err := fileSHA256(guestInit)
@@ -87,8 +93,8 @@ func WantStamp(guestInit, caCert string) (Stamp, error) {
 		h.Write(b)
 	}
 	return Stamp{
-		Version: StampVersion, Kernel: pins.Kernel.SHA256, Base: pins.Ubuntu.SquashFSSHA256,
-		Claude: pins.ClaudeCode.BinarySHA256, CodeCheck: pins.CodeCheck.Commit,
+		Version: StampVersion, Kernel: buildPins.Kernel, Base: buildPins.Base,
+		Claude: buildPins.Claude, CodeCheck: buildPins.CodeCheck,
 		CA: caSum, GuestInit: initSum, Scripts: hex.EncodeToString(h.Sum(nil)),
 	}, nil
 }
@@ -173,36 +179,72 @@ func (b *Builder) Build(ctx context.Context) (Stamp, error) {
 		return Stamp{}, err
 	}
 
-	built := filepath.Join(run, "rootfs.ext4")
-	stamp.RootDisk, err = fileSHA256(built)
-	if err != nil {
-		return Stamp{}, err
-	}
-	if err := b.root(ctx, "mv", "-f", "-T", built, b.Paths.RootDisk); err != nil {
-		return Stamp{}, err
-	}
-	if err := b.root(ctx, "install", "-m", "0644", "-o", "root", "-g", "root", "-T", cache("vmlinux"), b.Paths.Kernel); err != nil {
-		return Stamp{}, err
-	}
-	// Hash the kernel file installed, as cc-launch will, rather than trust
-	// that the cache still holds the pinned bytes.
-	kernelSum, err := fileSHA256(cache("vmlinux"))
-	if err != nil {
-		return Stamp{}, err
-	}
-	sums := fmt.Sprintf("%s  %s\n%s  %s\n", kernelSum, b.Paths.Kernel, stamp.RootDisk, b.Paths.RootDisk)
-	if err := system.WriteRootFile(ctx, b.Root, b.Paths.ImagesSum, []byte(sums), 0o644); err != nil {
-		return Stamp{}, err
-	}
-	js, err := json.MarshalIndent(stamp, "", "  ")
-	if err != nil {
-		return Stamp{}, err
-	}
-	if err := system.WriteRootFile(ctx, b.Root, StampPath(b.Paths), append(js, '\n'), 0o644); err != nil {
+	if err := b.install(ctx, filepath.Join(run, "rootfs.ext4"), cache("vmlinux"), &stamp); err != nil {
 		return Stamp{}, err
 	}
 	done = true
 	return stamp, b.Launch.Clean(ctx, id)
+}
+
+// install puts the built disk and the kernel in place with their sums and
+// the stamp. Everything lands beside the old image as *.new first, gets
+// checked as root-owned files, and only then renames over the old files, so
+// a failure on the way leaves the old image whole and consistent.
+func (b *Builder) install(ctx context.Context, built, kernel string, stamp *Stamp) (err error) {
+	final := []string{b.Paths.RootDisk, b.Paths.Kernel, b.Paths.ImagesSum, StampPath(b.Paths)}
+	staged := map[string]bool{}
+	defer func() {
+		if err != nil {
+			for _, f := range final {
+				if staged[f] {
+					_ = b.root(context.WithoutCancel(ctx), "rm", "-f", "--", f+".new")
+				}
+			}
+		}
+	}()
+
+	// The run folder belongs to root, so its disk can't change under us.
+	if stamp.RootDisk, err = fileSHA256(built); err != nil {
+		return err
+	}
+	staged[b.Paths.RootDisk] = true
+	if err := b.root(ctx, "mv", "-f", "-T", built, b.Paths.RootDisk+".new"); err != nil {
+		return err
+	}
+	staged[b.Paths.Kernel] = true
+	if err := b.root(ctx, "install", "-m", "0644", "-o", "root", "-g", "root", "-T", kernel, b.Paths.Kernel+".new"); err != nil {
+		return err
+	}
+	// Hash the root-owned copy, not the user's cache, which could have
+	// changed since the fetch checked it.
+	kernelSum, err := fileSHA256(b.Paths.Kernel + ".new")
+	if err != nil {
+		return err
+	}
+	if kernelSum != stamp.Kernel {
+		return fmt.Errorf("the kernel to install hashes to %s, not its pin %s", kernelSum, stamp.Kernel)
+	}
+
+	sums := fmt.Sprintf("%s  %s\n%s  %s\n", kernelSum, b.Paths.Kernel, stamp.RootDisk, b.Paths.RootDisk)
+	staged[b.Paths.ImagesSum] = true
+	if err := system.WriteRootFile(ctx, b.Root, b.Paths.ImagesSum+".new", []byte(sums), 0o644); err != nil {
+		return err
+	}
+	js, err := json.MarshalIndent(stamp, "", "  ")
+	if err != nil {
+		return err
+	}
+	staged[StampPath(b.Paths)] = true
+	if err := system.WriteRootFile(ctx, b.Root, StampPath(b.Paths)+".new", append(js, '\n'), 0o644); err != nil {
+		return err
+	}
+	for _, f := range final {
+		if err := b.root(ctx, "mv", "-f", "-T", f+".new", f); err != nil {
+			return err
+		}
+		staged[f] = false
+	}
+	return nil
 }
 
 func (b *Builder) root(ctx context.Context, name string, args ...string) error {

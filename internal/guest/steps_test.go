@@ -3,6 +3,7 @@ package guest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,6 +29,9 @@ type stepRig struct {
 
 func newStepRig(t *testing.T) *stepRig {
 	t.Helper()
+	saved := buildPins
+	buildPins.Kernel = hexSum(kernelBytes)
+	t.Cleanup(func() { buildPins = saved })
 	root := t.TempDir()
 	p := launch.DefaultPaths()
 	for _, f := range []*string{&p.StateDir, &p.RunsDir, &p.ImagesSum, &p.Kernel, &p.RootDisk, &p.RulesHash,
@@ -191,7 +195,15 @@ func TestImageStepWantsARebuildWhenAnInputChanges(t *testing.T) {
 			os.Remove(r.d.Paths.RootDisk) // 0444: replace it rather than write
 			os.WriteFile(r.d.Paths.RootDisk, []byte("altered"), 0o444)
 		},
-		"kernel":        func(r *stepRig) { os.WriteFile(r.d.Paths.Kernel, []byte("altered"), 0o644) },
+		"kernel": func(r *stepRig) { os.WriteFile(r.d.Paths.Kernel, []byte("altered"), 0o644) },
+		"kernel swapped with its sums": func(r *stepRig) {
+			// Consistent sums alone don't do: the kernel must be the pinned one.
+			other := []byte("\x7fELF another kernel")
+			os.WriteFile(r.d.Paths.Kernel, other, 0o644)
+			rootfs, _ := os.ReadFile(r.d.Paths.RootDisk)
+			os.WriteFile(r.d.Paths.ImagesSum, []byte(fmt.Sprintf("%s  %s\n%s  %s\n",
+				hexSum(other), r.d.Paths.Kernel, hexSum(rootfs), r.d.Paths.RootDisk)), 0o644)
+		},
 		"no stamp":      func(r *stepRig) { os.Remove(StampPath(r.d.Paths)) },
 		"garbage stamp": func(r *stepRig) { os.WriteFile(StampPath(r.d.Paths), []byte("{"), 0o644) },
 		"old pin": func(r *stepRig) {
@@ -215,6 +227,23 @@ func TestImageStepWantsARebuildWhenAnInputChanges(t *testing.T) {
 				t.Errorf("still passed: %s", st.Detail)
 			}
 		})
+	}
+}
+
+// A build that fails after creating files must still record them, or
+// uninstall would never find them.
+func TestImageStepRecordsWhatAFailedBuildLeft(t *testing.T) {
+	r := newStepRig(t)
+	r.d.Build = func(context.Context) (Stamp, error) {
+		os.MkdirAll(r.d.Paths.StateDir, 0o755)
+		os.WriteFile(r.d.Paths.RootDisk, []byte("half"), 0o444)
+		return Stamp{}, errors.New("cc-launch clean: exit 1")
+	}
+	if err := r.step(t, "guest-image").Apply(context.Background()); err == nil {
+		t.Fatal("Apply hid the build's error")
+	}
+	if len(r.records) != 1 || r.records[0].Path != r.d.Paths.RootDisk {
+		t.Errorf("records = %+v, want the root disk the failed build left", r.records)
 	}
 }
 

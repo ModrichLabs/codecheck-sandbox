@@ -123,7 +123,7 @@ func TestRealUbuntuSums(t *testing.T) {
 		t.Fatal(err)
 	}
 	sig, _ := os.ReadFile("testdata/ubuntu/SHA256SUMS.gpg")
-	got, err := VerifiedUbuntuSum(sums, sig)
+	got, err := VerifiedUbuntuSum(sums, sig, pins.Ubuntu)
 	if err != nil {
 		t.Fatalf("VerifiedUbuntuSum: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRealUbuntuSums(t *testing.T) {
 		t.Errorf("signed squashfs hash %s, pin %s", got, pins.Ubuntu.SquashFSSHA256)
 	}
 	tampered := bytes.Replace(sums, []byte("00b9709d"), []byte("ffb9709d"), 1)
-	if _, err := VerifiedUbuntuSum(tampered, sig); !errors.Is(err, ErrBadSignature) {
+	if _, err := VerifiedUbuntuSum(tampered, sig, pins.Ubuntu); !errors.Is(err, ErrBadSignature) {
 		t.Errorf("tampered real sums: err = %v, want ErrBadSignature", err)
 	}
 }

@@ -76,18 +76,19 @@ func LookupSum(sums []byte, name string) (string, error) {
 }
 
 // VerifiedUbuntuSum checks Ubuntu's SHA256SUMS with the embedded key and
-// returns the pinned squashfs's hash from it, which must also equal the pin.
-func VerifiedUbuntuSum(sums, sig []byte) (string, error) {
-	if err := VerifySums(sums, sig, assets.UbuntuCloudImageKey, pins.Ubuntu.KeyFingerprint); err != nil {
+// returns the image's hash from it, which must also equal the pin. Every
+// value it checks against comes from pin: key fingerprint, file name, hash.
+func VerifiedUbuntuSum(sums, sig []byte, pin pins.UbuntuPin) (string, error) {
+	if err := VerifySums(sums, sig, assets.UbuntuCloudImageKey, pin.KeyFingerprint); err != nil {
 		return "", err
 	}
-	name := path.Base(pins.Ubuntu.SquashFSURL)
+	name := path.Base(pin.SquashFSURL)
 	hash, err := LookupSum(sums, name)
 	if err != nil {
 		return "", err
 	}
-	if hash != pins.Ubuntu.SquashFSSHA256 {
-		return "", fmt.Errorf("%w: signed list gives %s for %s, the pin says %s", ErrHashMismatch, hash, name, pins.Ubuntu.SquashFSSHA256)
+	if hash != pin.SquashFSSHA256 {
+		return "", fmt.Errorf("%w: signed list gives %s for %s, the pin says %s", ErrHashMismatch, hash, name, pin.SquashFSSHA256)
 	}
 	return hash, nil
 }

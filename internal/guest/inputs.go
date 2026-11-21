@@ -222,8 +222,11 @@ func treeSize(dir string) (int64, error) {
 			return err
 		}
 		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
 		n += fi.Size()
-		return err
+		return nil
 	})
 	return n, err
 }

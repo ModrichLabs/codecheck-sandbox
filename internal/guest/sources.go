@@ -63,7 +63,7 @@ func (s PinnedSources) Base(ctx context.Context, dest string) error {
 	if err != nil {
 		return err
 	}
-	sum, err := fetch.VerifiedUbuntuSum(sums, sig)
+	sum, err := fetch.VerifiedUbuntuSum(sums, sig, s.Ubuntu)
 	if err != nil {
 		return fmt.Errorf("Ubuntu's signed checksums: %w", err)
 	}

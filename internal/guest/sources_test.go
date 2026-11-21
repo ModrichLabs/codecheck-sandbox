@@ -81,6 +81,19 @@ func TestBaseChecksTheImageAgainstThePin(t *testing.T) {
 	}
 }
 
+// Base answers to its own pin throughout, key fingerprint included.
+func TestBaseUsesItsOwnPin(t *testing.T) {
+	srv, hits, pin := ubuntuServer(t, realSums(t), []byte("image"))
+	pin.KeyFingerprint = strings.Repeat("A", 40)
+	s := PinnedSources{D: fetch.Downloader{Client: srv.Client()}, Ubuntu: pin}
+	if err := s.Base(context.Background(), filepath.Join(t.TempDir(), "base.squashfs")); err == nil {
+		t.Fatal("Base trusted a signature its own pin doesn't name")
+	}
+	if hits.Load() != 2 {
+		t.Errorf("%d requests; the image must not download", hits.Load())
+	}
+}
+
 func TestSourcesReuseACachedFile(t *testing.T) {
 	// A cached kernel with the pinned hash needs no network at all.
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

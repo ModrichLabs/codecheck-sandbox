@@ -16,10 +16,18 @@ _Updated 2026-11-21._
   precomputes diff-mode changes, so Claude gets no Bash at all.
 - **In progress:** M10, guest build, on branch `feat/guest-build` in its own
   worktree. Every M10 task done (broken down into six, since nothing installed
-  Firecracker yet); next come `/code-review medium`, the M10 pull request, then
-  M11 (review pipeline) once it merges. Untested until a real boot (M15):
-  `--parent-cgroup` inside the scope, and the whole build through `cc-launch`
-  (only the builder's initramfs and `cc-guestinit` booted for real so far).
+  Firecracker yet). `/code-review medium` found 7 issues; 6 fixed test-first:
+  the kernel got installed from the user's cache unchecked (now hashed as the
+  root-owned copy and refused unless it equals its pin, and `guest-image`
+  compares it with the stamp); a failed build recorded nothing for uninstall; a
+  rebuild failing halfway left new files beside old sums (now everything stages
+  as `*.new` and four renames swap it in last); a nil dereference in `treeSize`;
+  `extractMembers` could keep one binary of two; `Base` mixed its own pin with
+  the global one. Declined: a changelog entry, since no command reaches these
+  steps until M13 (as for M7–M9). Next: the M10 pull request, then M11 (review
+  pipeline) once it merges. Untested until a real boot (M15): `--parent-cgroup`
+  inside the scope, and the whole build through `cc-launch` (only the builder's
+  initramfs and `cc-guestinit` booted for real so far).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.

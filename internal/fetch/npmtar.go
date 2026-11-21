@@ -150,11 +150,22 @@ func extractMembers(tgz string, want []member) error {
 			return err
 		}
 	}
-	for i, m := range want {
-		if err := os.Rename(tmps[i].Name(), m.dest); err != nil {
+	for i := range want {
+		if err := tmps[i].Close(); err != nil {
 			return err
 		}
-		tmps[i].Close()
+	}
+	var moved []string
+	for i, m := range want {
+		if err := os.Rename(tmps[i].Name(), m.dest); err != nil {
+			// Take back the members already moved, so no dest holds a new
+			// file beside an old one.
+			for _, d := range moved {
+				os.Remove(d)
+			}
+			return err
+		}
+		moved = append(moved, m.dest)
 		tmps[i] = nil
 	}
 	return nil

@@ -80,6 +80,24 @@ func TestFirecrackerReleaseChecksTheTarball(t *testing.T) {
 	}
 }
 
+// "Both or neither" holds even when the second move fails.
+func TestFirecrackerReleaseLeavesNeitherWhenAMoveFails(t *testing.T) {
+	body := fcTarball(t)
+	srv := tlsServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) })
+	dir := t.TempDir()
+	pin := goodPin(body)
+	pin.URL = srv.URL + "/firecracker-v1.18.0-x86_64.tgz"
+	jailer := filepath.Join(dir, "jailer")
+	os.MkdirAll(filepath.Join(jailer, "blocker"), 0o755) // a non-empty folder: rename fails
+	r := FirecrackerRelease{Downloader: Downloader{Client: srv.Client()}, Pin: pin, WorkDir: dir}
+	if err := r.Fetch(context.Background(), filepath.Join(dir, "firecracker"), jailer); err == nil {
+		t.Fatal("Fetch reported success")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "firecracker")); !os.IsNotExist(err) {
+		t.Errorf("firecracker stayed without its jailer: %v", err)
+	}
+}
+
 func TestFirecrackerReleaseRefusesUnsafeEntries(t *testing.T) {
 	body := fcTarball(t, entry{name: "release-v1.18.0-x86_64/evil", link: "/etc/shadow", typ: '2'})
 	if _, err := fetchFirecracker(t, body, goodPin(body)); err == nil {

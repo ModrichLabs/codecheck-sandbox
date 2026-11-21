@@ -180,15 +180,15 @@ func (d Deps) image() step.Step {
 			for _, f := range files {
 				existed[f] = exists(f)
 			}
-			if _, err := d.Build(ctx); err != nil {
-				return err
-			}
+			_, err := d.Build(ctx)
+			// Record what exists now even after a failure, so uninstall
+			// finds whatever a half-finished build left.
 			for _, f := range files {
-				if !existed[f] {
+				if !existed[f] && exists(f) {
 					d.record(step.Item{ID: idImage, Kind: step.KindFile, Path: f, State: step.Created})
 				}
 			}
-			return nil
+			return err
 		},
 		undo: d.undo,
 	}
@@ -223,7 +223,7 @@ func (d Deps) checkImage() (step.Status, error) {
 		return fail("the kernel or root disk is missing")
 	}
 	wantSums := fmt.Sprintf("%s  %s\n%s  %s\n", kernel, d.Paths.Kernel, rootDisk, d.Paths.RootDisk)
-	if string(sums) != wantSums || rootDisk != got.RootDisk {
+	if string(sums) != wantSums || rootDisk != got.RootDisk || kernel != got.Kernel {
 		return fail("the installed images differ from their recorded hashes")
 	}
 	return pass("guest image current")
