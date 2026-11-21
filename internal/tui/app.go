@@ -43,6 +43,9 @@ type Config struct {
 	Sidebar []SidebarEntry
 	Steps   []StepInfo
 	Run     RunFunc
+	// Handover runs the privilege login before root steps; nil leaves the
+	// engine's Elevate unset (dry runs, and tests).
+	Handover *Handover
 }
 
 const (
@@ -73,6 +76,8 @@ type App struct {
 	finished       bool
 	err            error
 	confirmingQuit bool
+	elevating      bool // the privilege tool has the terminal
+	stopKeepAlive  context.CancelFunc
 }
 
 // New builds the interface for one run.
@@ -107,6 +112,9 @@ func (a *App) StepState(id string) theme.State { return a.states[id] }
 
 func (a *App) startRun() {
 	opts := step.Options{Events: a.events, Confirm: a.confirmPlan}
+	if a.cfg.Handover != nil {
+		opts.Elevate = a.elevate
+	}
 	ctx, run := a.ctx, a.cfg.Run
 	go func() { a.done <- run(ctx, opts) }()
 }
@@ -151,6 +159,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case confirmReq:
 		a.openConfirm(msg)
 		return a, a.listen()
+	case elevateReq:
+		return a, tea.Batch(a.listen(), a.startLogin(msg))
+	case loginDoneMsg:
+		a.loginDone(msg)
 	case runDoneMsg:
 		a.finished, a.err, a.root, a.confirm = true, msg.err, false, nil
 	case tea.KeyPressMsg:
@@ -306,6 +318,9 @@ func (a *App) mainLines() []string {
 		body = a.failureLines(w)
 	case a.finished && a.err == nil:
 		body = []string{a.th.Mark(theme.Done) + " " + a.th.Heading.Render("All steps done.")}
+	case a.elevating:
+		body = []string{a.th.Warning.Render("Waiting for your password in the terminal…"),
+			a.th.Faint.Render("Root commands after this one never prompt; the login stays fresh until setup ends.")}
 	default:
 		body = a.progressLines()
 	}

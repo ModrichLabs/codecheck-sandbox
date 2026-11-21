@@ -1247,9 +1247,21 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     finished steps pass their checks and get skipped. Goldens live in
     `internal/tui/testdata/` (`go test ./internal/tui -update` rewrites them);
     every screen test also checks the 100×30 bounds.
-- [ ] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
+- [x] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
       `tea.ExecProcess(sudo -v)`, then start the keepalive. A unit test checks
       the message flow. The manual checklist goes in `docs/manual-tests.md`.
+  - _Done:_ `Config.Handover` (nil leaves the engine's `Elevate` unset) holds
+    `Exec`, which hands the terminal over, and `KeepAlive`.
+    `NewHandover(tool, runner)` wires `tea.ExecProcess(LoginCommand(tool))` and
+    `system.StartKeepAlive`. **`LoginCommand`:** `sudo -v -p "<who asks>"` for
+    sudo and sudo-rs, and `<tool> true` for doas and run0. The engine's
+    `Elevate` travels over the same request channel as `Confirm`; a good login
+    restarts the keep-alive, cancelling the previous one, and quitting stops it.
+    Keep-alive failures just get drained: a lapse surfaces as `ErrLoginExpired`
+    on the next root command, and the engine asks for another handover (M2).
+    While the tool holds the terminal, the main pane says it waits for the
+    password. `docs/manual-tests.md` holds the hand checks (prompt, wrong
+    password, Ctrl-C, lapse, quitting).
 - [ ] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
       key. The API key field uses `EchoModePassword`, and its validator calls
       `/v1/models` through an injectable client. Tests cover the validators.

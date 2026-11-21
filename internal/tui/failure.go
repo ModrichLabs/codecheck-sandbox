@@ -22,6 +22,8 @@ func Fix(err error) string {
 		return f.Fix()
 	}
 	switch {
+	case errors.Is(err, ErrLoginFailed):
+		return "The password didn't get accepted, or the prompt got cancelled. Press r to try again."
 	case errors.Is(err, system.ErrLoginExpired):
 		return "The privilege login ran out. Press r to retry; you'll get asked for your password again."
 	case errors.Is(err, system.ErrNoPrivilegeTool):
