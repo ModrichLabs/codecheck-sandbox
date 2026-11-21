@@ -336,8 +336,28 @@ func TestExtractCapsTheDenials(t *testing.T) {
 		t.Fatalf("Extract: %v", err)
 	}
 	got, _ := os.ReadFile(filepath.Join(dir, "result", "proxy-denials.jsonl"))
-	if n := strings.Count(string(got), "\n"); n != maxDenials {
-		t.Errorf("%d lines, want the cap of %d", n, maxDenials)
+	lines := strings.Split(strings.TrimSuffix(string(got), "\n"), "\n")
+	// The cap's worth of entries, then one line counting the rest.
+	if len(lines) != maxDenials+1 || lines[len(lines)-1] != `{"dropped":50}` {
+		t.Errorf("%d lines ending %q; want %d entries and {\"dropped\":50}", len(lines), lines[len(lines)-1], maxDenials)
+	}
+}
+
+// A copy that fails part way leaves no root-only file behind to break the
+// caller's report.
+func TestExtractRemovesAFailedDenialCopy(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can chown to anyone")
+	}
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.Paths.DenyLog = filepath.Join(t.TempDir(), "proxy.jsonl")
+	job.Started = time.Now()
+	e.ResultUID = os.Getuid() + 1 // the final chown fails
+	if _, err := Extract(context.Background(), e, job); err == nil {
+		t.Fatal("Extract hid the failure")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "result", "proxy-denials.jsonl")); !os.IsNotExist(err) {
+		t.Errorf("a failed copy stayed behind: %v", err)
 	}
 }
 

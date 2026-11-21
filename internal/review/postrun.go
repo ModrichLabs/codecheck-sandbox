@@ -1,13 +1,13 @@
 package review
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -125,9 +125,7 @@ func (s *Summary) warn(w string) { s.Warnings = append(s.Warnings, w) }
 func (s *Summary) analyseReview(stream []byte) string {
 	var text string
 	found := false
-	sc := bufio.NewScanner(bytes.NewReader(stream))
-	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	for sc.Scan() {
+	for line := range lines(stream, maxEventLine) {
 		var ev struct {
 			Type              string            `json:"type"`
 			Subtype           string            `json:"subtype"`
@@ -144,7 +142,7 @@ func (s *Summary) analyseReview(stream []byte) string {
 				} `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(sc.Bytes(), &ev) != nil {
+		if json.Unmarshal(line, &ev) != nil {
 			continue
 		}
 		switch ev.Type {
@@ -237,9 +235,14 @@ func (s *Summary) countDenials(path string) error {
 	hosts := map[string]bool{}
 	for _, line := range bytes.Split(b, []byte("\n")) {
 		var d struct {
-			Host string `json:"host"`
+			Host    string `json:"host"`
+			Dropped int    `json:"dropped"`
 		}
 		if len(bytes.TrimSpace(line)) == 0 || json.Unmarshal(line, &d) != nil {
+			continue
+		}
+		if d.Dropped > 0 { // cc-launch's count of entries past its cap
+			s.ProxyDenials += d.Dropped
 			continue
 		}
 		s.ProxyDenials++
@@ -255,6 +258,26 @@ func (s *Summary) countDenials(path string) error {
 		s.DeniedHosts = s.DeniedHosts[:10]
 	}
 	return nil
+}
+
+// maxEventLine bounds one transcript line worth decoding; a longer one (a
+// huge tool result) gets skipped, and reading carries on after it.
+const maxEventLine = 16 << 20
+
+// lines yields each newline-separated line of b no longer than max.
+func lines(b []byte, max int) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		for len(b) > 0 {
+			line, rest, _ := bytes.Cut(b, []byte("\n"))
+			b = rest
+			if len(line) > max {
+				continue
+			}
+			if !yield(line) {
+				return
+			}
+		}
+	}
 }
 
 // readCapped reads a file up to max bytes; a missing file reads as empty.

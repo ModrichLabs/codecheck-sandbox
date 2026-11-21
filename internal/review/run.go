@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -87,8 +89,14 @@ func (p *Pipeline) Review(ctx context.Context, o Options) (RunResult, error) {
 	defer os.RemoveAll(prep.Dir)
 	cfg := guestinit.Config{Mode: guestinit.ModeReview, RunID: id.String(), MaxBudgetUSD: o.BudgetUSD,
 		Scope: prep.Scope, Base: prep.Base}
-	s := Summary{Target: o.Source.Target, Scope: string(prep.Scope), Base: prep.Base, Head: prep.Head}
+	s := summaryFor(o.Source, prep)
 	return p.run(ctx, id, prep.Dir, filepath.Join(prep.Dir, "code"), prep.Name, cfg, s, started)
+}
+
+// summaryFor starts a review's summary; the target loses any token its URL
+// carried.
+func summaryFor(src Source, prep Prepared) Summary {
+	return Summary{Target: DisplayTarget(src.Target), Scope: string(prep.Scope), Base: prep.Base, Head: prep.Head}
 }
 
 // Selftest runs the escape probes; ports adds host ports to try, such as
@@ -143,8 +151,8 @@ func (p *Pipeline) run(ctx context.Context, id launch.RunID, dir, codeDir, name 
 		return RunResult{}, errors.Join(runErr, err)
 	}
 	p.status(StateCollecting, started)
-	reportDir := filepath.Join(p.ReportsRoot, name+"-"+started.UTC().Format("20060102-150405"))
-	if err := os.MkdirAll(reportDir, 0o700); err != nil {
+	reportDir, err := newReportDir(p.ReportsRoot, name+"-"+started.UTC().Format("20060102-150405"))
+	if err != nil {
 		return RunResult{}, errors.Join(runErr, err)
 	}
 	for _, f := range []string{"stream.jsonl", "stderr.log", "proxy-denials.jsonl"} {
@@ -169,6 +177,28 @@ func (p *Pipeline) status(s State, started time.Time) {
 	if p.Status != nil {
 		p.Status(Status{State: s, Started: started})
 	}
+}
+
+// newReportDir makes a fresh 0700 folder under root, adding -2, -3 and so
+// on when another run already took the name.
+func newReportDir(root, name string) (string, error) {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	for i := 1; i < 100; i++ {
+		dir := filepath.Join(root, name)
+		if i > 1 {
+			dir += "-" + strconv.Itoa(i)
+		}
+		err := os.Mkdir(dir, 0o700)
+		if err == nil {
+			return dir, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("no free report folder name for %s", name)
 }
 
 // copyIfPresent copies a result file into the report folder at 0600.

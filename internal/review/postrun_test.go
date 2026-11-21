@@ -109,6 +109,22 @@ func TestAnalyseNoResultEvent(t *testing.T) {
 	}
 }
 
+// One huge line (a big file read back) must not hide the result after it.
+func TestAnalyseSkipsAnOversizedLine(t *testing.T) {
+	huge := `{"type":"user","message":{"content":"` + strings.Repeat("x", 17<<20) + `"}}`
+	dir := resultDir(t, map[string]string{
+		"stream.jsonl": initLine + "\n" + huge + "\n" + subAgentLine + "\n" + resultLine("success", false, 3, "# Findings") + "\n",
+		"exit-code":    "0\n",
+	})
+	s, report, err := Analyse(dir, guestinit.ModeReview)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+	if s.Outcome != OutcomeOK || s.SubAgents != 1 || report != "# Findings\n" {
+		t.Errorf("outcome %s, sub-agents %d, report %q", s.Outcome, s.SubAgents, report)
+	}
+}
+
 func TestAnalyseProxyDenials(t *testing.T) {
 	dir := resultDir(t, map[string]string{
 		"stream.jsonl": resultLine("success", false, 0.5, "ok") + "\n",
@@ -123,6 +139,20 @@ func TestAnalyseProxyDenials(t *testing.T) {
 	}
 	if s.Outcome != OutcomeOK {
 		t.Errorf("denials alone changed the outcome to %s", s.Outcome)
+	}
+}
+
+func TestAnalyseCountsDroppedDenials(t *testing.T) {
+	dir := resultDir(t, map[string]string{
+		"stream.jsonl": resultLine("success", false, 0.5, "ok") + "\n",
+		"exit-code":    "0\n",
+		"proxy-denials.jsonl": `{"time":"2026-11-21T10:00:00Z","reason":"denied-host","host":"a.example"}` + "\n" +
+			`{"time":"2026-11-21T10:00:01Z","reason":"denied-host","host":"b.example"}` + "\n" +
+			`{"dropped":5}` + "\n",
+	})
+	s, _, _ := Analyse(dir, guestinit.ModeReview)
+	if s.ProxyDenials != 7 || !hasWarning(s, "7 request") {
+		t.Errorf("denials = %d, warnings %v; want 7 counted", s.ProxyDenials, s.Warnings)
 	}
 }
 

@@ -18,8 +18,17 @@ _Updated 2026-11-21._
   `feat/guest-build`, reviewed and fixed.
 - **In progress:** M11, review pipeline, on branch `feat/review-pipeline`,
   stacked on `feat/guest-build` (it uses M10's `launch.Client`); rebase onto
-  `main` once #13 merges. Every M11 task done; next come `/code-review medium`
-  and the M11 pull request, then M12 (interface). Untested until a real boot
+  `main` once #13 merges. Every M11 task done. `/code-review medium` found 9
+  issues, all fixed test-first: code disks sized by bytes alone ran out of
+  blocks and inodes with many small files (now blocks and entries count, and
+  `mkfs.ext4 -N` gets an inode each); a failed preparation left the clone
+  behind; a token in a source URL reached `summary.json` and git's error text
+  (now `DisplayTarget` and scrubbed errors); a failed denial copy left a
+  root-only file that broke the report; a transcript line over the scanner's
+  buffer hid the result; trimmed diff and status output; two runs in one second
+  shared a report folder; the size error printed the wrong number; denials past
+  the cap went uncounted (now a `{"dropped":N}` line). Next: the M11 pull
+  request (stacked on #13), then M12 (interface). Untested until a real boot
   (M15): `--parent-cgroup` inside the scope, and full builds and reviews through
   `cc-launch` (only the builder's initramfs and `cc-guestinit` booted for real
   so far).

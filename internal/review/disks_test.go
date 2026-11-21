@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/guestinit"
+	"github.com/ModrichLabs/codecheck-sandbox/internal/launch"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
 
@@ -88,13 +90,38 @@ func TestMakeRunFilesRefusesABadConfig(t *testing.T) {
 	}
 }
 
-func TestCodeDiskSize(t *testing.T) {
-	for _, tc := range []struct{ files, want int64 }{
-		{0, 16 << 20},
-		{100 << 20, ((100<<20)*13/10 + 16<<20 + 4095) / 4096 * 4096},
-	} {
-		if got := codeDiskSize(tc.files); got != tc.want {
-			t.Errorf("codeDiskSize(%d) = %d, want %d", tc.files, got, tc.want)
+// Many small files need blocks and inodes, not just their bytes.
+func TestMakeRunFilesWithManySmallFiles(t *testing.T) {
+	needTools(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "code", "src")
+	for i := range 20 {
+		sub := filepath.Join(src, "d"+strconv.Itoa(i))
+		os.MkdirAll(sub, 0o755)
+		for j := range 1000 {
+			os.WriteFile(filepath.Join(sub, strconv.Itoa(j)+".txt"), []byte("x"), 0o644)
 		}
+	}
+	cfg := guestinit.Config{Mode: guestinit.ModeReview, RunID: "cc-20261121-101500-a1b2c3", MaxBudgetUSD: "5", Scope: guestinit.ScopeFull}
+	if err := MakeRunFiles(context.Background(), system.ExecRunner{}, dir, filepath.Join(dir, "code"), cfg); err != nil {
+		t.Fatalf("MakeRunFiles with 20,000 small files: %v", err)
+	}
+}
+
+func TestTooLargeMessageShowsTheDiskSize(t *testing.T) {
+	needTools(t)
+	dir := t.TempDir()
+	code := filepath.Join(dir, "code")
+	os.MkdirAll(filepath.Join(code, "src"), 0o755)
+	f, _ := os.Create(filepath.Join(code, "src", "big"))
+	f.Truncate(launch.MaxCodeDisk * 8 / 10) // fits as bytes, not with the overhead
+	f.Close()
+	cfg := guestinit.Config{Mode: guestinit.ModeReview, RunID: "cc-20261121-101500-a1b2c3", MaxBudgetUSD: "5", Scope: guestinit.ScopeFull}
+	err := MakeRunFiles(context.Background(), system.ExecRunner{}, dir, code, cfg)
+	if err == nil {
+		t.Fatal("MakeRunFiles accepted a disk past the cap")
+	}
+	if !strings.Contains(err.Error(), "needs a") {
+		t.Errorf("error = %v; want it to give the disk size it needs", err)
 	}
 }

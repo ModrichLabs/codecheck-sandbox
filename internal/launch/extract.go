@@ -184,45 +184,69 @@ type denial struct {
 // copyDenials writes the proxy denials logged since the boot to dst, in the
 // still root-owned result folder: one VM runs at a time, so they all belong
 // to this run. It reads the previous rotation too, re-encodes each entry
-// (dropping anything that doesn't parse), and stops at maxDenials. An absent
-// log means the proxy denied nothing.
-func copyDenials(e Env, since time.Time, dst string) error {
+// (dropping anything that doesn't parse), and keeps maxDenials; a last line,
+// {"dropped":N}, counts the rest. An absent log means the proxy denied
+// nothing. On any failure dst goes, so no root-only file stays to break the
+// caller's report.
+func copyDenials(e Env, since time.Time, dst string) (err error) {
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL|unix.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return err
 	}
-	n := 0
-	for _, p := range []string{e.Paths.DenyLog + ".1", e.Paths.DenyLog} {
-		f, err := os.Open(p)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
+	defer func() {
+		if cerr := out.Close(); err == nil {
+			err = cerr
 		}
 		if err != nil {
-			out.Close()
+			os.Remove(dst)
+		}
+	}()
+	kept, dropped := 0, 0
+	for _, p := range []string{e.Paths.DenyLog + ".1", e.Paths.DenyLog} {
+		if err := readDenials(p, since, func(d denial) error {
+			if kept >= maxDenials {
+				dropped++
+				return nil
+			}
+			kept++
+			line, _ := json.Marshal(d)
+			_, err := out.Write(append(line, '\n'))
+			return err
+		}); err != nil {
 			return err
 		}
-		sc := bufio.NewScanner(io.LimitReader(f, 16<<20))
-		sc.Buffer(make([]byte, 64<<10), 64<<10)
-		for sc.Scan() && n < maxDenials {
-			var d denial
-			if json.Unmarshal(sc.Bytes(), &d) != nil || d.Time.Before(since) {
-				continue
-			}
-			line, _ := json.Marshal(d)
-			if _, err := out.Write(append(line, '\n')); err != nil {
-				f.Close()
-				out.Close()
-				return err
-			}
-			n++
-		}
-		f.Close()
 	}
-	if err := out.Chown(e.ResultUID, e.ResultGID); err != nil {
-		out.Close()
+	if dropped > 0 {
+		if _, err := fmt.Fprintf(out, "{\"dropped\":%d}\n", dropped); err != nil {
+			return err
+		}
+	}
+	return out.Chown(e.ResultUID, e.ResultGID)
+}
+
+// readDenials hands each parsable entry of one log file stamped at or after
+// since to fn; an absent file holds none.
+func readDenials(path string, since time.Time, fn func(denial) error) error {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
-	return out.Close()
+	defer f.Close()
+	sc := bufio.NewScanner(io.LimitReader(f, 16<<20))
+	sc.Buffer(make([]byte, 64<<10), 64<<10)
+	for sc.Scan() {
+		var d denial
+		if json.Unmarshal(sc.Bytes(), &d) != nil || d.Time.Before(since) {
+			continue
+		}
+		if err := fn(d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // extractOne copies one file off the disk into dst, removing dst again when

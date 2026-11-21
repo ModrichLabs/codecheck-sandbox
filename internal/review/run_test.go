@@ -178,6 +178,31 @@ func TestSelftest(t *testing.T) {
 	}
 }
 
+// Two runs in the same second keep separate reports.
+func TestSelftestsInTheSameSecondKeepSeparateReports(t *testing.T) {
+	r := newPipeline(t)
+	r.launcher.results = map[string]string{"stream.jsonl": "SUMMARY 0 passed, 0 failed\n", "exit-code": "0\n"}
+	a, err := r.p.Selftest(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := r.p.Selftest(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.ReportDir == b.ReportDir {
+		t.Errorf("both runs wrote to %s", a.ReportDir)
+	}
+}
+
+// The summary names the target without any token from its URL.
+func TestSummaryTargetDropsTheToken(t *testing.T) {
+	s := summaryFor(Source{Target: "https://user:ghp_secret@example.com/org/repo"}, Prepared{})
+	if strings.Contains(s.Target, "ghp_secret") || s.Target != "https://example.com/org/repo" {
+		t.Errorf("summary target = %q", s.Target)
+	}
+}
+
 func TestStatusParser(t *testing.T) {
 	var got []State
 	w := newStatusWriter("cc-20261121-101500-a1b2c3", func(s State) { got = append(got, s) })
