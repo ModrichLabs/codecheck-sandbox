@@ -35,6 +35,7 @@ func newDoctorCommand(env Env, opts *Options) *cobra.Command {
 			return printDoctor(cmd.OutOrStdout(), env, rows)
 		},
 	}
+	addBundleFlags(cmd, env, opts)
 	return cmd
 }
 

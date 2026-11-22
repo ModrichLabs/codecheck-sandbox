@@ -90,7 +90,7 @@ func TestTheClientComesAfterTheCommandRuns(t *testing.T) {
 	var ran, builtAfter bool
 	root := testTree(&ran)
 	fake := &fakeClient{}
-	withTelemetry(root, &Options{}, func(Options) telemetry.Client {
+	withTelemetry(root, testEnv(), &Options{}, func(Options) telemetry.Client {
 		builtAfter = ran
 		return fake
 	})
@@ -107,7 +107,7 @@ func TestNestedSubcommandsGetWrapped(t *testing.T) {
 	var ran bool
 	root := testTree(&ran)
 	fake := &fakeClient{}
-	withTelemetry(root, &Options{}, func(Options) telemetry.Client { return fake })
+	withTelemetry(root, testEnv(), &Options{}, func(Options) telemetry.Client { return fake })
 	root.SetArgs([]string{"telemetry", "off"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)

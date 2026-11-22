@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/config"
+	"github.com/ModrichLabs/codecheck-sandbox/internal/logging"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/review"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
@@ -31,6 +33,9 @@ type Env struct {
 	Setup func(Env, Options) (*SetupHost, error)
 	// EUID holds the effective user id; setup refuses root.
 	EUID int
+	// OpenLog opens the command's log through the redactor (logging.New);
+	// nil logs nothing, as in tests.
+	OpenLog func(debug bool, red *system.Redactor) (*slog.Logger, io.Closer, error)
 }
 
 // OpenSetup returns the host to set up.
@@ -67,7 +72,7 @@ func ProcessEnv() Env {
 	if environ["HOME"] == "" {
 		environ["HOME"] = home
 	}
-	return Env{
+	e := Env{
 		FS:      system.OSFS{},
 		Environ: environ,
 		Home:    home,
@@ -75,6 +80,11 @@ func ProcessEnv() Env {
 		In:      os.Stdin,
 		EUID:    os.Geteuid(),
 	}
+	env := e
+	env.OpenLog = func(debug bool, red *system.Redactor) (*slog.Logger, io.Closer, error) {
+		return logging.New(logging.Options{Dir: env.LogDir(), Redactor: red, Debug: debug})
+	}
+	return env
 }
 
 // ConfigPath names config.toml.

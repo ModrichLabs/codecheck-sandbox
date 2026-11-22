@@ -24,7 +24,9 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
   and `--kernel FILE` supplies the guest kernel if its download fails.
 - `doctor`, which runs every setup check, including the installed files against
   what setup renders and the guest image's hashes, as a table, and exits 1 on
-  any failure.
+  any failure. `doctor --bundle` writes a redacted support bundle.
+- Every command now logs to `~/.local/state/codecheck-sandbox/log/`, with the
+  API key redacted; `--debug` copies the log to the terminal.
 - `selftest`, which boots a VM that tries every way out of the sandbox, and
   `canary`, a small paid review of a planted SQL injection that checks reviews
   work end to end.

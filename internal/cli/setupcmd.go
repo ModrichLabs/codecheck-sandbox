@@ -193,6 +193,7 @@ func runSetup(cmd *cobra.Command, env Env, opts *Options, flags setupFlags) erro
 	if key == "" && !opts.DryRun {
 		return errors.New("setup needs the API key: run it in a terminal, or set CODECHECK_API_KEY with --yes")
 	}
+	redactSecret(ctx, key)
 	if !opts.DryRun {
 		if err := env.SaveConfig(cfg); err != nil {
 			return err
@@ -227,6 +228,11 @@ func runSetup(cmd *cobra.Command, env Env, opts *Options, flags setupFlags) erro
 
 	runOpts := step.Options{DryRun: opts.DryRun, AssumeYes: opts.Yes,
 		OnStepFinished: func(r step.StepResult) {
+			if r.Err != nil {
+				logFrom(ctx).Error("step finished", "step", r.ID, "outcome", string(r.Outcome), "err", r.Err.Error())
+			} else {
+				logFrom(ctx).Info("step finished", "step", r.ID, "outcome", string(r.Outcome), "duration", r.Duration.String())
+			}
 			recordEvent(ctx, telemetry.StepFinished{Step: telemetry.StepID(r.ID), Outcome: telemetry.Outcome(r.Outcome),
 				Duration: telemetry.DurationBandOf(r.Duration)})
 		}}

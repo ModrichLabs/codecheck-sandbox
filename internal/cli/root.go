@@ -83,7 +83,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 			},
 		},
 	)
-	withTelemetry(root, &opts, newClient)
+	withTelemetry(root, env, &opts, newClient)
 	return root
 }
 

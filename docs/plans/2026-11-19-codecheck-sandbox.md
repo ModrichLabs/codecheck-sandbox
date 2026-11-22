@@ -1397,10 +1397,25 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     every missing part, and exited 1. **For M14:** the `environment_profile`
     telemetry event (spec §11, once per setup and doctor) still needs building
     from the platform facts.
-- [ ] `doctor --bundle [--out FILE]`: list the files first, then write a
+- [x] `doctor --bundle [--out FILE]`: list the files first, then write a
       redacted `.tar.gz` of recent logs, `doctor` output, versions and the
       environment profile. **Test:** a planted key in a log never reaches the
       archive.
+  - _Done:_ The bundle holds `doctor.txt` (the table, without colour), the
+    current and previous log files, `versions.txt` (the CLI, Go and every pin,
+    with the chosen CodeCheck commit) and `environment.txt` (architecture, CPUs,
+    kernel release and the os-release ID, ID_LIKE, VERSION_ID and PRETTY_NAME).
+    `redactBundle` replaces anything shaped like an Anthropic key (`sk-ant-…`,
+    any kind) and the home folder's path (`~`), on top of the log's own
+    Redactor. It lists the files first, writes 0600 and never overwrites
+    (`O_EXCL`); it succeeds whatever doctor found, since a failing host needs
+    the bundle most. Switching the key pattern off made the leak test fail.
+    **Logging (M3a's obligation):** the command wrapper opens the log through
+    `Env.OpenLog` (`logging.New` in the real process, nil in tests) with a fresh
+    `Redactor`, logs each command's start and outcome, and hands both to the
+    command through its context. Setup registers the API key with the redactor
+    the moment it has one, and logs each step's outcome; a test with a failing
+    step whose error quotes the key failed until that registration went in.
 - [x] `telemetry on|off|status`: change and show consent; `off` deletes the
       install id and the queue. **Tests:** each subcommand against a temp config
       folder.
