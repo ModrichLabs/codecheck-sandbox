@@ -12,12 +12,12 @@ _Updated 2026-11-22._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
-  launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
-  precomputes diff-mode changes, so Claude gets no Bash at all.
-- **Waiting for the maintainer's merge (a stack):** M10, guest build, PR #13 on
-  `feat/guest-build`; M11, review pipeline, PR #14 on `feat/review-pipeline`
-  (based on #13); M12, interface, on `feat/interface` (based on #14). Each gets
-  rebased onto `main` once the one below merges.
+  launch helper (#12), then on 2026-11-22 M10 guest build (#13), M11 review
+  pipeline (#14) and the README mascot (#15), into `main`. Spec amendment 9
+  (2026-11-21): the host precomputes diff-mode changes, so Claude gets no Bash
+  at all.
+- **Waiting for the maintainer's merge:** M12, interface, PR #16 on
+  `feat/interface`, rebased onto `main`.
 - **In progress:** M12, interface: every task done (theme, root model, screens,
   sudo handover, forms and consent, doctor/review/uninstall, plain mode).
   `/code-review medium` found 10 issues; 9 fixed test-first: a phase with many
