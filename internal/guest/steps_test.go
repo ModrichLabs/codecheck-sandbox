@@ -35,7 +35,7 @@ func newStepRig(t *testing.T) *stepRig {
 	root := t.TempDir()
 	p := launch.DefaultPaths()
 	for _, f := range []*string{&p.StateDir, &p.RunsDir, &p.ImagesSum, &p.Kernel, &p.RootDisk, &p.RulesHash,
-		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot} {
+		&p.BinDir, &p.Jailer, &p.Firecracker, &p.JailerBase, &p.LockPath, &p.CgroupRoot, &p.DenyLog} {
 		*f = filepath.Join(root, *f)
 	}
 	initBin := filepath.Join(root, "cc-guestinit")

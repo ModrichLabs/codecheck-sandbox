@@ -3,6 +3,7 @@ package launch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -273,6 +274,90 @@ func TestExtractHandsOverTheFolderLast(t *testing.T) {
 	}
 	if len(owners) == 0 {
 		t.Error("no file got written")
+	}
+}
+
+func denialLine(at time.Time, host string) string {
+	return fmt.Sprintf(`{"time":%q,"reason":"denied-host","client":"172.16.0.2","method":"CONNECT","host":%q}`+"\n", at.Format(time.RFC3339Nano), host)
+}
+
+func TestExtractCopiesTheRunsProxyDenials(t *testing.T) {
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.Paths.DenyLog = filepath.Join(t.TempDir(), "proxy.jsonl")
+	job.Started = time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
+	before, during := job.Started.Add(-time.Minute), job.Started.Add(time.Minute)
+	write(t, e.Paths.DenyLog+".1", []byte(denialLine(before, "old.example")+denialLine(during, "rotated.example")), 0o600)
+	write(t, e.Paths.DenyLog, []byte(denialLine(during.Add(time.Second), "github.com")+"not json\n"), 0o600)
+
+	if _, err := Extract(context.Background(), e, job); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "result", "proxy-denials.jsonl"))
+	if err != nil {
+		t.Fatalf("no denials file: %v", err)
+	}
+	got := string(b)
+	for _, want := range []string{"rotated.example", "github.com"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("denials lack %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "old.example") || strings.Contains(got, "not json") {
+		t.Errorf("denials hold entries from before the run, or junk:\n%s", got)
+	}
+	if strings.Count(got, "\n") != 2 {
+		t.Errorf("want two lines:\n%s", got)
+	}
+}
+
+func TestExtractWithoutADenialLog(t *testing.T) {
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.Paths.DenyLog = filepath.Join(t.TempDir(), "proxy.jsonl") // the proxy never denied anything
+	job.Started = time.Now()
+	if _, err := Extract(context.Background(), e, job); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "result", "proxy-denials.jsonl"))
+	if err != nil || len(b) != 0 {
+		t.Errorf("denials file = %q, %v; want an empty file", b, err)
+	}
+}
+
+func TestExtractCapsTheDenials(t *testing.T) {
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.Paths.DenyLog = filepath.Join(t.TempDir(), "proxy.jsonl")
+	job.Started = time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	for i := range maxDenials + 50 {
+		b.WriteString(denialLine(job.Started.Add(time.Duration(i)*time.Millisecond), "x.example"))
+	}
+	write(t, e.Paths.DenyLog, []byte(b.String()), 0o600)
+	if _, err := Extract(context.Background(), e, job); err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(dir, "result", "proxy-denials.jsonl"))
+	lines := strings.Split(strings.TrimSuffix(string(got), "\n"), "\n")
+	// The cap's worth of entries, then one line counting the rest.
+	if len(lines) != maxDenials+1 || lines[len(lines)-1] != `{"dropped":50}` {
+		t.Errorf("%d lines ending %q; want %d entries and {\"dropped\":50}", len(lines), lines[len(lines)-1], maxDenials)
+	}
+}
+
+// A copy that fails part way leaves no root-only file behind to break the
+// caller's report.
+func TestExtractRemovesAFailedDenialCopy(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can chown to anyone")
+	}
+	e, job, _, dir := extractRig(t, reviewCfg(), map[string]string{"/exit-code": "0\n"})
+	e.Paths.DenyLog = filepath.Join(t.TempDir(), "proxy.jsonl")
+	job.Started = time.Now()
+	e.ResultUID = os.Getuid() + 1 // the final chown fails
+	if _, err := Extract(context.Background(), e, job); err == nil {
+		t.Fatal("Extract hid the failure")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "result", "proxy-denials.jsonl")); !os.IsNotExist(err) {
+		t.Errorf("a failed copy stayed behind: %v", err)
 	}
 }
 

@@ -165,15 +165,8 @@ func (b *Builder) Build(ctx context.Context) (Stamp, error) {
 			_ = b.Launch.Clean(context.WithoutCancel(ctx), id)
 		}
 	}()
-	for _, dir := range []string{b.Paths.RunsDir, run} {
-		if err := b.root(ctx, "install", "-d", "-m", "0755", "-o", "root", "-g", "root", dir); err != nil {
-			return Stamp{}, err
-		}
-	}
-	for _, f := range runFiles {
-		if err := b.root(ctx, "install", "-m", "0644", "-o", "root", "-g", "root", "-T", cache(f), filepath.Join(run, f)); err != nil {
-			return Stamp{}, err
-		}
+	if err := launch.StageRun(ctx, b.Root, b.Paths, id, b.Cache, runFiles); err != nil {
+		return Stamp{}, err
 	}
 	if err := b.Launch.Build(ctx, id); err != nil {
 		return Stamp{}, err

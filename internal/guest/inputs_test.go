@@ -113,10 +113,10 @@ func TestStageInputsCapsThePlugin(t *testing.T) {
 
 // A real disk, read back with the real debugfs.
 func TestMakeInputsDisk(t *testing.T) {
-	if _, err := lookTool("mkfs.ext4"); err != nil {
+	if _, err := system.LookTool("mkfs.ext4"); err != nil {
 		t.Skip("no mkfs.ext4 here")
 	}
-	debugfs, err := lookTool("debugfs")
+	debugfs, err := system.LookTool("debugfs")
 	if err != nil {
 		t.Skip("no debugfs here")
 	}
