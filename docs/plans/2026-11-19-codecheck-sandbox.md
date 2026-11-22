@@ -1390,9 +1390,22 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.
-- [ ] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
+- [x] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
       folder, CodeCheck commit, telemetry). Hand-rolled TOML subset or
       `BurntSushi/toml`. **Test:** round trip.
+  - _Done:_ its own package, `internal/config`, since setup, review, doctor and
+    the telemetry wiring all read it. `BurntSushi/toml` v1.6.0 (December 2025).
+    Keys: `budget_usd`, `reports_dir`, `codecheck_commit` and `telemetry`
+    (absent until the consent question gets answered). `Load(fsys, path, home)`
+    gives the defaults for a missing file or missing keys, and refuses unknown
+    keys, wrong types and invalid values. `Save` checks the same, then writes
+    0600 into a 0700 folder. `Path` and `StateDir` follow `XDG_CONFIG_HOME` and
+    `XDG_STATE_HOME` when they hold absolute paths. The budget and reports rules
+    moved here from `tui`, so the form, `--yes` and `review` share them:
+    `NormaliseBudget` accepts what cc-launch and the guest accept (up to four
+    digits and two decimals, above zero, at most US$1,000). `ExpandReportsDir`
+    refuses control characters, but anything inside the user's home passes,
+    which matters where homes live in `/var/home` (Fedora Silverblue).
 
 ## M14. Docs
 
