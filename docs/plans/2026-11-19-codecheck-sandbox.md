@@ -42,9 +42,11 @@ _Updated 2026-11-22._
   line). Untested until a real boot (M15): `--parent-cgroup` inside the scope,
   and full builds and reviews through `cc-launch` (only the builder's initramfs
   and `cc-guestinit` booted for real so far).
-- **Open question for the maintainer:** the kernel pin points at Firecracker's
-  CI bucket, not a release of this repository; mirroring it means publishing a
-  GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
+- **Kernel source (decided 2026-11-22):** keep the pin on Firecracker's CI
+  bucket and distribute no kernel ourselves, so no GPL-2.0 source duties. M13
+  adds a `--kernel FILE` fallback and M14 a scheduled link check; building our
+  own kernel in CI waits in "Deferred" for before 1.0, or for the day the
+  upstream file goes.
 - **Dependency pins:** choose versions at least two weeks old;
   `charm.land/log/v2` v2.0.1, `posthog-go` v1.40.1, and M12's Charm set
   (bubbletea v2.1.1, bubbles v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour
@@ -52,9 +54,9 @@ _Updated 2026-11-22._
 - **Consent screen:** the maintainer approved its wording and layout
   (`internal/tui/testdata/consent.golden`) on 2026-11-22; M13 wires it into
   `setup` as it stands.
-- **Waiting on the maintainer:** the kernel mirror. Decided 2026-11-22: add
-  `--prompt` and `--cwe` (M13 `review` task), and no VM size question (spec
-  amendment 10).
+- **Waiting on the maintainer:** nothing open. Decided 2026-11-22: add
+  `--prompt` and `--cwe` (M13 `review` task), no VM size question (spec
+  amendment 10), and the kernel source above.
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1348,6 +1350,11 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
       goes missing. **Test:** a full dry run on a fake host prints every planned
       command and changes nothing (`FakeRunner` sees no `Root` writes).
+  - **Kernel fallback** (maintainer's choice, 2026-11-22): when the pinned
+    kernel URL fails, setup says the upstream file may have moved and accepts
+    `--kernel FILE`, still checked against `pins.Kernel.SHA256`; a file with any
+    other hash gets refused. **Tests:** a failing download suggests the flag; a
+    matching file installs; a mismatched file gets refused.
 - [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.
       **Tests:** healthy and drifted fake hosts.
@@ -1399,6 +1406,12 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       and review flow, and trust boundaries; check each claim against the code.
 - [ ] `README.md`: final quick start and limits (Linux with KVM, x86_64, one VM
       at a time). Fill in `CHANGELOG.md` `[Unreleased]`.
+- [ ] `.github/workflows/pins.yml`: a weekly scheduled check (plus manual
+      `workflow_dispatch`) that every pinned download URL in `internal/pins`
+      still answers, and that the guest kernel still matches its SHA-256. On a
+      failure it opens or updates one issue, so a vanished upstream kernel shows
+      up before a user's setup does. Third-party actions pinned by commit hash;
+      the job gets `issues: write` and nothing more.
 - [ ] Update the maintainer's private deployment plan document: a note at the
       top that the CLI now automates it, plus the proxy and key-injection
       change. (The maintainer has the link.)
@@ -1437,6 +1450,11 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 - A nested-KVM QEMU test matrix for Ubuntu and Fedora (spec §9, "later").
 - Parallel reviews.
 - Release binaries.
+- **Our own guest kernel** (before 1.0, or as soon as the pinned upstream file
+  goes): build 6.1.x from kernel.org's source with Firecracker's published guest
+  config in this repository's CI, and release the binary with its exact source
+  tarball, config and build script (GPL-2.0). It needs a new pin, a repeat of
+  spike S1's boot checks, and ongoing kernel security updates.
 
 ## Verification
 
