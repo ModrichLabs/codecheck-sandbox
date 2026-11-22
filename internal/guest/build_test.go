@@ -353,14 +353,29 @@ func TestBuildCleansUpAFailedBoot(t *testing.T) {
 	}
 }
 
+// rebuild --commit and config.toml pick the CodeCheck commit; the stamp must
+// follow it, so the image step sees a rebuild is due.
+func TestWantStampFollowsTheCodeCheckCommit(t *testing.T) {
+	b, _, _, _ := buildRig(t)
+	pinned, _ := WantStamp(b.GuestInit, b.CACert, "")
+	same, _ := WantStamp(b.GuestInit, b.CACert, buildPins.CodeCheck)
+	other, _ := WantStamp(b.GuestInit, b.CACert, strings.Repeat("b", 40))
+	if pinned != same || pinned.CodeCheck != buildPins.CodeCheck {
+		t.Errorf("an empty commit should mean the pin: %+v vs %+v", pinned, same)
+	}
+	if other.CodeCheck != strings.Repeat("b", 40) || other == pinned {
+		t.Errorf("another commit left the stamp at %s", other.CodeCheck)
+	}
+}
+
 func TestWantStampFollowsTheInputs(t *testing.T) {
 	b, _, _, _ := buildRig(t)
-	a, err := WantStamp(b.GuestInit, b.CACert)
+	a, err := WantStamp(b.GuestInit, b.CACert, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	os.WriteFile(b.CACert, []byte("-----BEGIN CERTIFICATE-----\nnew CA\n"), 0o644)
-	c, _ := WantStamp(b.GuestInit, b.CACert)
+	c, _ := WantStamp(b.GuestInit, b.CACert, "")
 	if a == c {
 		t.Error("a new CA left the stamp unchanged; the guest must rebuild to trust it")
 	}

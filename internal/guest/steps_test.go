@@ -68,7 +68,7 @@ func installImage(t *testing.T, p launch.Paths, initBin, ca string, rootfs []byt
 	os.WriteFile(p.Kernel, kernelBytes, 0o644)
 	os.WriteFile(p.RootDisk, rootfs, 0o444)
 	os.WriteFile(p.ImagesSum, []byte(fmt.Sprintf("%s  %s\n%s  %s\n", hexSum(kernelBytes), p.Kernel, hexSum(rootfs), p.RootDisk)), 0o644)
-	s, err := WantStamp(initBin, ca)
+	s, err := WantStamp(initBin, ca, "")
 	if err != nil {
 		t.Fatal(err)
 	}
