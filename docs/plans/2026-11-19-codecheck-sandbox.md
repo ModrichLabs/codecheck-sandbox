@@ -13,23 +13,21 @@ _Updated 2026-11-22._
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
   launch helper (#12), then on 2026-11-22 M10 guest build (#13), M11 review
-  pipeline (#14) and the README mascot (#15), into `main`. Spec amendment 9
-  (2026-11-21): the host precomputes diff-mode changes, so Claude gets no Bash
-  at all.
-- **Waiting for the maintainer's merge:** M12, interface, PR #16 on
-  `feat/interface`, rebased onto `main`.
-- **In progress:** M12, interface: every task done (theme, root model, screens,
-  sudo handover, forms and consent, doctor/review/uninstall, plain mode).
-  `/code-review medium` found 10 issues; 9 fixed test-first: a phase with many
-  steps (the host phase holds 15) crashed the screen in a short terminal (now a
-  step window that keeps the current step in view); a network failure in the key
-  check stuck for that key (now only firm answers, `ErrKeyRejected`, get
-  remembered); the consent screen ignored Ctrl+C, q and Esc (now `Aborted`); the
-  login keep-alive outlived a finished run; the finished review's time kept
-  growing, and showed a huge figure before the first status; plain mode printed
-  the `--yes` hint twice; → toggled instead of picking Yes; one comment broke
-  E-Prime. Not taken: a changelog entry, since no command reaches these screens
-  until M13, which adds it. Next: the pull request, then M13 (commands).
+  pipeline (#14), the README mascot (#15) and M12 interface (#16), into `main`.
+  Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes, so
+  Claude gets no Bash at all.
+- **In progress:** M13, commands, on `feat/commands`: every task done
+  (`config.toml`, `telemetry`, `review` with `--cwe` and `--prompt`, `selftest`,
+  `canary`, `setup` with the components step and `--kernel`, `doctor` and
+  `--bundle`, `rebuild`, `uninstall` with its footprint scan, and the log in
+  every command). Next: `/code-review medium`, then the pull request, then M14
+  (docs). Untested until M15: a real interactive setup, review and uninstall,
+  and doas or run0 hosts.
+- **M12 notes:** `/code-review medium` found 10 issues; 9 fixed test-first (a
+  short terminal crashed on the 15-step host phase; a network failure in the key
+  check stuck; Ctrl+C did nothing on the consent screen; the keep-alive outlived
+  a finished run; the review's time kept growing; plain mode printed the `--yes`
+  hint twice; → toggled instead of picking Yes; one comment broke E-Prime).
 - **M11 notes:** `/code-review medium` found 9 issues, all fixed test-first:
   code disks sized by bytes alone ran out of blocks and inodes with many small
   files (now blocks and entries count, and `mkfs.ext4 -N` gets an inode each); a
