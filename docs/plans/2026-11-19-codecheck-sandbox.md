@@ -1322,13 +1322,13 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     whole escape sequences (payload too), stray control characters, invalid
     bytes and bidirectional overrides before Glamour sees it; error text and
     doctor details get the same. The confirm panel instead spells such bytes out
-    (`\x1b`, `‮`) through `visible`, since the preview must show every byte that
-    runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest items
-    marked created, plus reports with `--purge`) and what stays (adopted items
-    and the reports folder). Enter confirms; `q`, `n` or Esc cancels. **Fixed on
-    the way:** running the tests three times showed that, after a quit, the
-    cancelled engine's own end could replace `ErrQuit` with `context.Canceled`;
-    a quit now sticks, and a direct test checks it.
+    (`\x1b`, `\u202e`) through `visible`, since the preview must show every byte
+    that runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest
+    items marked created, plus reports with `--purge`) and what stays (adopted
+    items and the reports folder). Enter confirms; `q`, `n` or Esc cancels.
+    **Fixed on the way:** running the tests three times showed that, after a
+    quit, the cancelled engine's own end could replace `ErrQuit` with
+    `context.Canceled`; a quit now sticks, and a direct test checks it.
 - [x] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
       exists. Golden test of a full fake run.
   - _Done:_ `RunPlain(ctx, PlainConfig)` prints `charmbracelet/log` lines
@@ -1381,7 +1381,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 - [ ] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
       `assets/canary/`) as a review with budget 5; then their pass rules (spec
       §7). **Tests** use fixture outputs.
-- [ ] `review`: flags from spec §8. **Test:** argument validation, and the
+- [x] `review`: flags from spec §8. **Test:** argument validation, and the
       run-folder contents.
   - **`--prompt` and `--cwe`** (maintainer's choice, 2026-11-22: add both).
     CodeCheck's skill (pinned `3231a0d`) already reads both from the request's
@@ -1399,6 +1399,30 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       `Encode`/`Parse` round trips and refusals (newline, control bytes,
       over-long text, a CWE in selftest mode), and the `cc-claude` assets test
       for the composed prompt. Telemetry sends neither.
+  - _Done:_ **`review <path|url>`** with `--pr`, `--base`, `--budget`, `--cwe`
+    (repeatable; `89` or `CWE-89`) and `--prompt`. `reviewOptions` checks
+    everything before anything runs, with the same rules the guest applies
+    (`guestinit.ValidateCWEs`, `ValidatePrompt`, `config.NormaliseBudget`); the
+    budget defaults to `budget_usd` from `config.toml`. **Guest:**
+    `guestinit.Config` gains `CWEs` and `Prompt` (`cwes` and `prompt` keys,
+    review only; the prompt may take 1,000 bytes, every other value stays at
+    128), `jobEnv` passes `CC_CWES` and `CC_PROMPT`, and `cc-claude` checks both
+    again on its own (byte length, control characters, C1 codes and bidi
+    overrides as UTF-8 bytes, inside a function with a local `LC_ALL=C`, so
+    Claude Code keeps its locale). It adds "Hunt CWE-89 and CWE-79 first." and
+    the user's text between `<<<` and `>>>` markers, always inside one quoted
+    argument. **Wiring:** `cli.Sandbox` (a fake in tests, `realSandbox` in
+    production) runs `review.Pipeline` with `launch.Client` through the
+    privilege tool; sudo and sudo-rs use the sudoers rule, while doas and run0
+    first get the password handover on the terminal plus the keep-alive. A
+    terminal gets `tui.Review`; `--plain` or a pipe gets a status line per
+    state. **Exit code:** 0 only for `ok`; any other outcome prints the summary
+    and report folder, then exits 1 (`ErrOutcome`). Usage docs and the changelog
+    cover the flags, the CWE priority and the exit code. **Found on the way:**
+    writing files had decoded three `\u202e` escapes (two in M12's code, one in this
+    plan) into raw bidi overrides; `internal/repocheck` now fails the build on
+    any raw bidi control. **For M15:** check doas and run0 reviews for real (the
+    keep-alive must outlast an hour-long run before `cc-launch clean`).
 - [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after

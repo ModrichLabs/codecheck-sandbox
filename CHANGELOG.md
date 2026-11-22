@@ -12,10 +12,15 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
 ### Added
 
 - The `codecheck-sandbox` command tree, with `--version` and a `version`
-  command. The lifecycle commands (`setup`, `doctor`, `selftest`, `canary`,
-  `review`, `rebuild`, `uninstall` and `telemetry`) exist but report "not
-  implemented".
+  command. The lifecycle commands `setup`, `doctor`, `selftest`, `canary`,
+  `rebuild` and `uninstall` exist but report "not implemented".
 - Global flags `--yes`, `--dry-run`, `--plain`, `--debug` and `--no-telemetry`.
+- `review <path|url>` runs a CodeCheck review inside the sandbox, with `--pr`,
+  `--base`, `--budget`, and `--cwe` and `--prompt` to focus it. It shows live
+  status, then the report, and exits 1 when a review doesn't end cleanly.
+- `telemetry on|off|status`, and `config.toml` for the default budget, the
+  reports folder, the CodeCheck commit and the telemetry choice. Telemetry stays
+  off unless you turn it on.
 - Project documentation: README, architecture overview, usage guide, and the
   design spec, plan and spike findings.
 - Licence (Apache-2.0), NOTICE crediting CodeCheck, and contribution, security

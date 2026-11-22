@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/term"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/config"
+	"github.com/ModrichLabs/codecheck-sandbox/internal/review"
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
 
@@ -21,6 +23,23 @@ type Env struct {
 	// TTY says stdin and stdout both reach a terminal.
 	TTY bool
 	In  io.Reader
+	// Sandbox opens the sandbox for review and selftest; nil means the
+	// real one (newSandbox). Tests pass a fake.
+	Sandbox func(Env, Options) (Sandbox, error)
+}
+
+// Sandbox runs reviews and selftests (review.Pipeline, behind cc-launch).
+type Sandbox interface {
+	Review(ctx context.Context, o review.Options, status func(review.Status), console io.Writer) (review.RunResult, error)
+	Selftest(ctx context.Context, ports []int, status func(review.Status), console io.Writer) (review.RunResult, error)
+}
+
+// OpenSandbox returns the sandbox to run against.
+func (e Env) OpenSandbox(o Options) (Sandbox, error) {
+	if e.Sandbox != nil {
+		return e.Sandbox(e, o)
+	}
+	return newSandbox(e, o)
 }
 
 // ProcessEnv reads the real process.

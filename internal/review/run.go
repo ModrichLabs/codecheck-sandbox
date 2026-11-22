@@ -66,6 +66,10 @@ type Pipeline struct {
 type Options struct {
 	Source    Source
 	BudgetUSD string
+	// CWEs and Prompt focus the review (--cwe, --prompt); guestinit checks
+	// both before anything gets written.
+	CWEs   []int
+	Prompt string
 }
 
 // RunResult bundles what a run produced.
@@ -88,7 +92,7 @@ func (p *Pipeline) Review(ctx context.Context, o Options) (RunResult, error) {
 	}
 	defer os.RemoveAll(prep.Dir)
 	cfg := guestinit.Config{Mode: guestinit.ModeReview, RunID: id.String(), MaxBudgetUSD: o.BudgetUSD,
-		Scope: prep.Scope, Base: prep.Base}
+		Scope: prep.Scope, Base: prep.Base, CWEs: o.CWEs, Prompt: o.Prompt}
 	s := summaryFor(o.Source, prep)
 	return p.run(ctx, id, prep.Dir, filepath.Join(prep.Dir, "code"), prep.Name, cfg, s, started)
 }

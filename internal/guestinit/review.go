@@ -210,6 +210,12 @@ func jobEnv(c Config) []string {
 		if c.Base != "" {
 			env = append(env, "CC_BASE="+c.Base)
 		}
+		if len(c.CWEs) > 0 {
+			env = append(env, "CC_CWES="+joinInts(c.CWEs))
+		}
+		if c.Prompt != "" {
+			env = append(env, "CC_PROMPT="+c.Prompt)
+		}
 	case ModeSelftest:
 		if len(c.ProbePorts) > 0 {
 			s := make([]string, len(c.ProbePorts))

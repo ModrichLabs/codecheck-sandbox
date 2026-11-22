@@ -68,7 +68,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 		stub("doctor", "Check every part of the setup and report problems"),
 		stub("selftest", "Boot a VM and try each way out of the sandbox"),
 		stub("canary", "Run a small paid review of a known-vulnerable sample"),
-		stub("review", "Review a repository inside a sandboxed VM"),
+		newReviewCommand(env, &opts),
 		stub("rebuild", "Rebuild the guest image, for example for a new CodeCheck commit"),
 		stub("uninstall", "Remove everything setup installed"),
 		newTelemetryCommand(env, &opts),

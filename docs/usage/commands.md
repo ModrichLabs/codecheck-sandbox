@@ -46,11 +46,25 @@ codecheck-sandbox review <path|url> [--pr N | --base REF] [--prompt TEXT] [--cwe
   change against its base.
 - **Diff against a ref:** `--base main` reviews only what changed since that
   ref.
-- **Focus:** `--prompt "Review ./routes for injection flaws"`, or `--cwe 89`.
-- **Budget:** `--budget 10` stops the review at US$10 (default US$25).
+- **Focus on a weakness:** `--cwe 89` (or `--cwe CWE-89`) has CodeCheck hunt
+  that CWE family first. It sets a priority, not a limit: every other class
+  still gets reviewed. Repeat it for up to ten CWEs.
+- **Extra instructions:**
+  `--prompt "Review ./routes; treat the admin API as internet-facing"` adds one
+  line to the request, such as a sub-folder, a threat model, or a deliberate
+  narrowing (CodeCheck then lists what it left out under Limitations). It takes
+  up to 1,000 bytes of plain text on one line; anything else, such as a line
+  break, gets refused rather than trimmed.
+- **Budget:** `--budget 10` stops the review at US$10. The default comes from
+  `budget_usd` in `config.toml` (US$25 unless setup changed it), and the most a
+  review may take is US$1,000.
 
 The tool clones a fresh copy on the host, strips git hooks and configuration
 from it, and gives the VM a read-only copy. While the review runs, the screen
 shows elapsed time and the VM's state. Afterwards you get `report.md` and a
 `summary.json` with cost, duration and any warnings, such as proxy denials or
 signs that the model refused.
+
+`review` exits 0 only when the review ends cleanly. It exits 1, after writing
+the report, when the review stopped at its budget, read like a refusal, hit an
+error or never finished, so scripts can tell.
