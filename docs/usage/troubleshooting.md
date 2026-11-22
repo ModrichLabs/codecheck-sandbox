@@ -18,7 +18,9 @@
   redacted.
 - `codecheck-sandbox doctor --bundle` packs recent logs, the `doctor` output and
   version details into one archive for a bug report. It lists the files before
-  writing anything; check the archive yourself before sharing it.
+  writing anything, removes anything shaped like an API key and your home
+  folder's path, and never overwrites a file (`--out FILE` picks the name).
+  Check the archive yourself before sharing it.
 - Open a
   [bug report](https://github.com/ModrichLabs/codecheck-sandbox/issues/new/choose).
   Security problems go through the

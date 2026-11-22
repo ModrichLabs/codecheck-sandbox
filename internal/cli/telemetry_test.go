@@ -23,7 +23,7 @@ func runWith(t *testing.T, args ...string) (*fakeClient, Options, error) {
 	t.Helper()
 	fake := &fakeClient{}
 	var seen Options
-	cmd := NewRootCommandWith(func(o Options) telemetry.Client {
+	cmd := NewRootCommandEnv(testEnv(), func(o Options) telemetry.Client {
 		seen = o
 		return fake
 	})
@@ -50,9 +50,9 @@ func TestEveryCommandRecordsCommandRunAndFlushes(t *testing.T) {
 }
 
 func TestAFailingCommandAlsoSendsAnException(t *testing.T) {
-	fake, _, err := runWith(t, "doctor")
+	fake, _, err := runWith(t, "review", "x", "--budget", "lots")
 	if err == nil {
-		t.Fatal("doctor: want the not-implemented error")
+		t.Fatal("review with a bad budget: want an error")
 	}
 	if len(fake.events) != 2 || fake.flushes != 1 {
 		t.Fatalf("events = %+v, flushes = %d", fake.events, fake.flushes)
@@ -90,7 +90,7 @@ func TestTheClientComesAfterTheCommandRuns(t *testing.T) {
 	var ran, builtAfter bool
 	root := testTree(&ran)
 	fake := &fakeClient{}
-	withTelemetry(root, &Options{}, func(Options) telemetry.Client {
+	withTelemetry(root, testEnv(), &Options{}, func(Options) telemetry.Client {
 		builtAfter = ran
 		return fake
 	})
@@ -107,7 +107,7 @@ func TestNestedSubcommandsGetWrapped(t *testing.T) {
 	var ran bool
 	root := testTree(&ran)
 	fake := &fakeClient{}
-	withTelemetry(root, &Options{}, func(Options) telemetry.Client { return fake })
+	withTelemetry(root, testEnv(), &Options{}, func(Options) telemetry.Client { return fake })
 	root.SetArgs([]string{"telemetry", "off"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -117,12 +117,5 @@ func TestNestedSubcommandsGetWrapped(t *testing.T) {
 	}
 	if fake.events[0].(telemetry.CommandRun).Command != "telemetry" {
 		t.Errorf("command = %v, want the top-level name telemetry", fake.events[0])
-	}
-}
-
-func TestDefaultTelemetryStaysOffWithoutStoredConsent(t *testing.T) {
-	// config.toml arrives in M13; until then nothing can switch telemetry on.
-	if _, ok := defaultTelemetry(Options{}).(telemetry.Noop); !ok {
-		t.Error("defaultTelemetry must return Noop while no consent can exist")
 	}
 }

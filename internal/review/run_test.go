@@ -25,6 +25,7 @@ type fakeLaunch struct {
 	results map[string]string
 	err     error
 	calls   []string
+	cfg     guestinit.Config // the settings the last run got
 }
 
 func (f *fakeLaunch) Run(_ context.Context, id launch.RunID) error {
@@ -32,6 +33,7 @@ func (f *fakeLaunch) Run(_ context.Context, id launch.RunID) error {
 	fmt.Fprintf(f.console, "[    0.000000] Linux version 6.1.155\n")
 	block, _ := os.ReadFile(filepath.Join(id.Dir(f.paths), "config.img"))
 	cfg, _ := guestinit.Parse(block)
+	f.cfg = cfg
 	fmt.Fprintf(f.console, "cc-guestinit: %s %s starting\n", cfg.Mode, id)
 	if f.results != nil {
 		res := filepath.Join(id.Dir(f.paths), "result")
@@ -90,6 +92,19 @@ func newPipeline(t *testing.T) *pipelineRig {
 		Status: func(s Status) { r.states = append(r.states, s.State) },
 	}
 	return r
+}
+
+func TestReviewPassesTheFocusToTheGuest(t *testing.T) {
+	r := newPipeline(t)
+	r.launcher.results = map[string]string{"stream.jsonl": resultLine("success", false, 1, "ok") + "\n", "exit-code": "0\n"}
+	_, err := r.p.Review(context.Background(), Options{Source: Source{Target: repo(t, "")}, BudgetUSD: "25",
+		CWEs: []int{89, 79}, Prompt: "Review ./routes"})
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	if !slices.Equal(r.launcher.cfg.CWEs, []int{89, 79}) || r.launcher.cfg.Prompt != "Review ./routes" {
+		t.Errorf("the guest got %+v", r.launcher.cfg)
+	}
 }
 
 func TestReview(t *testing.T) {

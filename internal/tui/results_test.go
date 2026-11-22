@@ -118,7 +118,7 @@ func TestReviewStripsTerminalEscapesFromTheReport(t *testing.T) {
 func TestSanitise(t *testing.T) {
 	// Whole sequences go, payload and all; then stray controls, invalid
 	// bytes and bidirectional overrides (which can hide text).
-	in := "a\x1b[2Jb\x1b]8;;http://x\x07c\td\x00e‮f\r\ng\x9bh\u0085i"
+	in := "a\x1b[2Jb\x1b]8;;http://x\x07c\td\x00e\u202ef\r\ng\x9bh\u0085i"
 	if got := sanitise(in); got != "abc\tdef\nghi" {
 		t.Errorf("sanitise = %q", got)
 	}

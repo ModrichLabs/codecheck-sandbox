@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -50,20 +49,6 @@ func TestRootDefinesGlobalFlags(t *testing.T) {
 		if f.Value.Type() != "bool" || f.DefValue != "false" {
 			t.Errorf("--%s: type %s default %s, want bool default false", name, f.Value.Type(), f.DefValue)
 		}
-	}
-}
-
-func TestStubSubcommandsReportNotImplemented(t *testing.T) {
-	for _, name := range []string{
-		"setup", "doctor", "selftest", "canary", "review", "rebuild",
-		"uninstall", "telemetry",
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := execute(t, name)
-			if !errors.Is(err, ErrNotImplemented) {
-				t.Fatalf("error = %v, want ErrNotImplemented", err)
-			}
-		})
 	}
 }
 

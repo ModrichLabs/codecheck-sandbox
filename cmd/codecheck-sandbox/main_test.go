@@ -23,12 +23,13 @@ func TestVersionFlagPrintsNameAndVersion(t *testing.T) {
 func TestErrorsGoToStderrWithExitCodeOne(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	code := run([]string{"doctor"}, &stdout, &stderr)
+	// A bad --budget fails before review touches the host.
+	code := run([]string{"review", "x", "--budget", "lots", "--no-telemetry"}, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if got, want := stderr.String(), "codecheck-sandbox: doctor: not implemented\n"; got != want {
+	if got, want := stderr.String(), "codecheck-sandbox: --budget: enter an amount in US dollars, such as 25\n"; got != want {
 		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 	if stdout.Len() != 0 {

@@ -31,7 +31,9 @@ type Deps struct {
 	Cache     string
 	GuestInit string
 	CACert    string
-	Record    func(step.Item) // hears every item Apply creates; nil drops them
+	// CodeCheckCommit names the chosen plugin commit; empty means the pin.
+	CodeCheckCommit string
+	Record          func(step.Item) // hears every item Apply creates; nil drops them
 
 	FirecrackerPin pins.FirecrackerPin
 	// FetchFirecracker writes both checked binaries (fetch.FirecrackerRelease).
@@ -205,7 +207,7 @@ func (d Deps) checkImage() (step.Status, error) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		return fail(StampPath(d.Paths) + " unreadable; rebuild")
 	}
-	want, err := WantStamp(d.GuestInit, d.CACert)
+	want, err := WantStamp(d.GuestInit, d.CACert, d.CodeCheckCommit)
 	if err != nil {
 		return step.Status{}, err
 	}

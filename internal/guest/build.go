@@ -43,8 +43,11 @@ type Builder struct {
 	Cache     string // the user's build cache, ~/.cache/codecheck-sandbox/build
 	GuestInit string // the static cc-guestinit, shipped beside the CLI
 	CACert    string // the sandbox CA certificate
-	Paths     launch.Paths
-	Now       func() time.Time
+	// CodeCheckCommit names the plugin commit Sources fetches; empty means
+	// the pin. It goes into the stamp.
+	CodeCheckCommit string
+	Paths           launch.Paths
+	Now             func() time.Time
 }
 
 // StampVersion changes whenever the stamp's meaning does.
@@ -73,8 +76,12 @@ var buildPins = struct{ Kernel, Base, Claude, CodeCheck string }{
 	pins.Kernel.SHA256, pins.Ubuntu.SquashFSSHA256, pins.ClaudeCode.BinarySHA256, pins.CodeCheck.Commit,
 }
 
-// WantStamp describes the image the current pins and files would build.
-func WantStamp(guestInit, caCert string) (Stamp, error) {
+// WantStamp describes the image the current pins and files would build,
+// with the given CodeCheck commit (empty means the pinned one).
+func WantStamp(guestInit, caCert, codecheck string) (Stamp, error) {
+	if codecheck == "" {
+		codecheck = buildPins.CodeCheck
+	}
 	initSum, err := fileSHA256(guestInit)
 	if err != nil {
 		return Stamp{}, err
@@ -94,7 +101,7 @@ func WantStamp(guestInit, caCert string) (Stamp, error) {
 	}
 	return Stamp{
 		Version: StampVersion, Kernel: buildPins.Kernel, Base: buildPins.Base,
-		Claude: buildPins.Claude, CodeCheck: buildPins.CodeCheck,
+		Claude: buildPins.Claude, CodeCheck: codecheck,
 		CA: caSum, GuestInit: initSum, Scripts: hex.EncodeToString(h.Sum(nil)),
 	}, nil
 }
@@ -107,7 +114,7 @@ var runFiles = []string{"config.img", "vmlinux", "init.cpio", "base.squashfs", "
 // builder through cc-launch, then installs the result with images.sha256 and
 // the stamp. A run folder that got created gets cleaned on every path out.
 func (b *Builder) Build(ctx context.Context) (Stamp, error) {
-	stamp, err := WantStamp(b.GuestInit, b.CACert)
+	stamp, err := WantStamp(b.GuestInit, b.CACert, b.CodeCheckCommit)
 	if err != nil {
 		return Stamp{}, err
 	}

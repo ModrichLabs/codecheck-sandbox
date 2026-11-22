@@ -1,9 +1,5 @@
 # Setup
 
-> **Planned.** `codecheck-sandbox setup` currently reports "not implemented".
-> This page describes the design; it becomes step-by-step instructions as the
-> wizard lands.
-
 ```sh
 codecheck-sandbox setup
 ```
@@ -19,12 +15,16 @@ contents. Press:
 
 - **Enter** to run it,
 - **d** to read the full files,
-- **s** to skip it,
+- **s** to skip it, which ends setup, since later steps build on it,
 - **q** to quit.
 
 The first time a step needs root, the wizard hands the terminal to `sudo` for
 your password. After that it keeps the sudo login fresh in the background, and
-never asks for or stores your password itself.
+never asks for or stores your password itself. Run setup as your normal user; it
+refuses to run as root.
+
+What setup installs gets recorded in `/var/lib/codecheck-sandbox/manifest.json`,
+even when a later step fails, so `uninstall` can remove exactly that.
 
 ## The phases
 
@@ -63,4 +63,14 @@ answers from flags or `~/.config/codecheck-sandbox/config.toml`. It stops if an
 answer goes missing. Telemetry stays off under `--yes` unless the config file
 turns it on.
 
-`--dry-run` prints every planned command and file, and changes nothing.
+`--dry-run` prints every planned command and file, and changes nothing. A few
+checks need root to read (such as ufw's rules), so even a dry run asks for your
+password once in a terminal.
+
+Other flags:
+
+- `--budget 10` and `--reports-dir ~/reports` set the defaults saved in
+  `config.toml`.
+- `--kernel FILE` supplies the guest kernel when the pinned download fails, for
+  example because the upstream file has moved. Setup still checks it against the
+  pinned SHA-256 and refuses any other file.

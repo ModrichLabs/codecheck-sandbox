@@ -4,23 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"charm.land/huh/v2"
+
+	"github.com/ModrichLabs/codecheck-sandbox/internal/config"
 )
 
 // Details holds the "Your details" answers (spec §7, step 4). The telemetry
 // answer comes from the consent screen.
 type Details struct {
 	APIKey     string
-	Budget     string // US dollars per review, as typed; see ParseBudget
-	ReportsDir string // as typed; see ExpandReportsDir
+	Budget     string // US dollars per review, as typed; see config.NormaliseBudget
+	ReportsDir string // as typed; see config.ExpandReportsDir
 }
 
 // FormDeps supplies what the form's validators need.
@@ -51,12 +50,12 @@ func DetailsForm(d *Details, deps FormDeps) *huh.Form {
 				Title("Budget per review (US$)").
 				Description("A review stops when it reaches this. You can pass --budget to change it per run.").
 				Value(&d.Budget).
-				Validate(func(s string) error { _, err := ParseBudget(s); return err }),
+				Validate(func(s string) error { _, err := config.NormaliseBudget(s); return err }),
 			huh.NewInput().
 				Title("Reports folder").
 				Description("Each review writes report.md and summary.json into a new folder here.").
 				Value(&d.ReportsDir).
-				Validate(func(s string) error { _, err := ExpandReportsDir(s, deps.Home); return err }),
+				Validate(func(s string) error { _, err := config.ExpandReportsDir(s, deps.Home); return err }),
 		),
 	).WithTheme(huh.ThemeFunc(huh.ThemeCharm)).WithShowHelp(true)
 }
@@ -162,53 +161,4 @@ func (k KeyChecker) Check(ctx context.Context, key string) error {
 		return fmt.Errorf("%w (403): it lacks permission to list models; use a workspace key with API access", ErrKeyRejected)
 	}
 	return fmt.Errorf("Anthropic answered %d; try again shortly", resp.StatusCode)
-}
-
-// --- Budget, reports folder and VM size ---
-
-// MaxBudget caps the budget a form accepts; --budget can't go past it either.
-const MaxBudget = 1000
-
-// ParseBudget reads a budget in US dollars, with or without a $ sign.
-func ParseBudget(s string) (float64, error) {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(strings.TrimPrefix(s, "US"), "$")
-	v, err := strconv.ParseFloat(s, 64)
-	switch {
-	case err != nil || math.IsNaN(v) || math.IsInf(v, 0):
-		return 0, errors.New("enter an amount in US dollars, such as 25")
-	case v <= 0:
-		return 0, errors.New("the budget has to exceed zero")
-	case v > MaxBudget:
-		return 0, fmt.Errorf("budgets go up to US$%d", MaxBudget)
-	}
-	return v, nil
-}
-
-// systemDirs hold files the system owns; reports never go there.
-var systemDirs = []string{"/bin", "/boot", "/dev", "/etc", "/lib", "/lib64", "/proc", "/root", "/run", "/sbin", "/sys", "/usr", "/var"}
-
-// ExpandReportsDir turns ~ into home and checks the result: an absolute
-// path outside the system's own folders.
-func ExpandReportsDir(s, home string) (string, error) {
-	s = strings.TrimSpace(s)
-	switch {
-	case s == "~":
-		s = home
-	case strings.HasPrefix(s, "~/"):
-		s = filepath.Join(home, s[2:])
-	}
-	if !filepath.IsAbs(s) {
-		return "", errors.New("give a full path, such as ~/codecheck-reports")
-	}
-	s = filepath.Clean(s)
-	if s == "/" {
-		return "", errors.New("pick a folder of your own, such as ~/codecheck-reports")
-	}
-	for _, d := range systemDirs {
-		if s == d || strings.HasPrefix(s, d+"/") {
-			return "", fmt.Errorf("%s belongs to the system; pick a folder of your own", d)
-		}
-	}
-	return s, nil
 }

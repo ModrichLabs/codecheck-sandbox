@@ -1,11 +1,16 @@
 # Uninstall
 
-> **Planned.** `codecheck-sandbox uninstall` currently reports "not
-> implemented".
-
 ```sh
 codecheck-sandbox uninstall          # keeps your reports
-codecheck-sandbox uninstall --purge  # also deletes reports and caches
+codecheck-sandbox uninstall --purge  # also deletes reports, the work folder and the build cache
+```
+
+`--purge` removes only the report folders reviews made (each holds a
+`summary.json`), then the reports folder if that leaves it empty; anything else
+you keep there stays.
+
+```sh
+
 ```
 
 Setup records everything it creates in a root-owned manifest. `uninstall` lists
@@ -21,7 +26,13 @@ opposite order:
 
 It leaves alone anything that existed before setup, such as packages or users
 you already had; the manifest marks those "adopted". If the manifest has gone
-missing, `uninstall` scans the known locations instead.
+missing, `uninstall` scans the known locations instead: it removes the sandbox's
+own files, units, `fcjail` user, tap and firewall table that it finds, and no
+package, since nothing then says which packages setup installed. Any firewalld
+or ufw allowance then needs removing by hand.
+
+`--yes` removes without asking, and `--dry-run` only lists. If a step fails, the
+manifest stays, so running `uninstall` again picks up what remains.
 
 Afterwards, `codecheck-sandbox doctor` should report nothing installed. Remove
 the `codecheck-sandbox` binary itself with

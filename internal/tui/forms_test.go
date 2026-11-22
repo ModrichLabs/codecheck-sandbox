@@ -105,39 +105,6 @@ func TestKeyValidatorRemembersItsLastAnswer(t *testing.T) {
 	}
 }
 
-func TestBudget(t *testing.T) {
-	for in, want := range map[string]float64{"25": 25, "1": 1, "7.50": 7.5, " 10 ": 10, "$12": 12, "US$5": 5} {
-		got, err := ParseBudget(in)
-		if err != nil || got != want {
-			t.Errorf("ParseBudget(%q) = %v, %v", in, got, err)
-		}
-	}
-	for _, bad := range []string{"", "0", "-5", "abc", "1e9", "NaN", "Inf", "1001"} {
-		if _, err := ParseBudget(bad); err == nil {
-			t.Errorf("ParseBudget(%q) passed", bad)
-		}
-	}
-}
-
-func TestReportsFolder(t *testing.T) {
-	home := t.TempDir()
-	for in, want := range map[string]string{
-		"~/codecheck-reports": home + "/codecheck-reports",
-		home + "/r":           home + "/r",
-		"~":                   home,
-	} {
-		got, err := ExpandReportsDir(in, home)
-		if err != nil || got != want {
-			t.Errorf("ExpandReportsDir(%q) = %q, %v", in, got, err)
-		}
-	}
-	for _, bad := range []string{"", "reports", "~other/x", "/etc/reports", "/", "/usr/share/x", "/proc/x"} {
-		if _, err := ExpandReportsDir(bad, home); err == nil {
-			t.Errorf("ExpandReportsDir(%q) passed", bad)
-		}
-	}
-}
-
 func TestDetailsFormBuilds(t *testing.T) {
 	d := Details{Budget: "25", ReportsDir: "~/codecheck-reports"}
 	f := DetailsForm(&d, FormDeps{Home: t.TempDir()})

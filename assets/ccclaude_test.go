@@ -140,6 +140,59 @@ func TestCCClaudeDiffReviewReadsTheHostsChangeFiles(t *testing.T) {
 	}
 }
 
+// --cwe and --prompt only add words to the request; the user's text stays
+// one argument, quoted, and never runs.
+func TestCCClaudeFocus(t *testing.T) {
+	text := `Review ./routes for injection; $(touch /tmp/pwned) "quotes" 'and' \backslashes`
+	args, env, err := runCCClaude(t, "CC_MAX_BUDGET_USD=25", "CC_SCOPE=full", "CC_CWES=89,79", "CC_PROMPT="+text)
+	if err != nil {
+		t.Fatalf("cc-claude: %v: %s", err, err.(*exec.ExitError).Stderr)
+	}
+	if _, set := env["LC_ALL"]; set {
+		t.Error("the prompt check's LC_ALL leaked into Claude Code's environment")
+	}
+	prompt := args[1]
+	for _, want := range []string{"Run a security review of", "Hunt CWE-89 and CWE-79 first", text} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	if _, err := os.Stat("/tmp/pwned"); err == nil {
+		t.Error("the prompt's text ran as a command")
+	}
+	one, _, _ := runCCClaude(t, "CC_MAX_BUDGET_USD=25", "CC_SCOPE=full", "CC_CWES=22")
+	if !strings.Contains(one[1], "Hunt CWE-22 first") || strings.Contains(one[1], "user adds") {
+		t.Errorf("one CWE, no prompt:\n%s", one[1])
+	}
+	plain, _, _ := runCCClaude(t, "CC_MAX_BUDGET_USD=25", "CC_SCOPE=full")
+	if strings.Contains(plain[1], "CWE") || strings.Contains(plain[1], "user adds") {
+		t.Errorf("an unfocused review mentions a focus:\n%s", plain[1])
+	}
+}
+
+func TestCCClaudeRefusesBadFocus(t *testing.T) {
+	base := []string{"CC_MAX_BUDGET_USD=5", "CC_SCOPE=full"}
+	for name, extra := range map[string]string{
+		"cwe with a flag":  "CC_CWES=89 --bare",
+		"cwe letters":      "CC_CWES=89,xss",
+		"cwe too long":     "CC_CWES=123456",
+		"too many cwes":    "CC_CWES=1,2,3,4,5,6,7,8,9,10,11",
+		"empty cwes":       "CC_CWES=",
+		"prompt newline":   "CC_PROMPT=one\ntwo",
+		"prompt escape":    "CC_PROMPT=clear\x1b[2J",
+		"prompt bidi":      "CC_PROMPT=abc\xe2\x80\xaedef",
+		"prompt c1":        "CC_PROMPT=abc\xc2\x85def",
+		"prompt too long":  "CC_PROMPT=" + strings.Repeat("x", 1001),
+		"empty prompt set": "CC_PROMPT=",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := runCCClaude(t, append(base, extra)...); err == nil {
+				t.Error("cc-claude ran claude anyway")
+			}
+		})
+	}
+}
+
 func TestCCClaudeRefusesBadSettings(t *testing.T) {
 	for name, env := range map[string][]string{
 		"no budget":          {"CC_SCOPE=full"},

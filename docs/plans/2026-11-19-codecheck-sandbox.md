@@ -13,23 +13,33 @@ _Updated 2026-11-22._
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
   launch helper (#12), then on 2026-11-22 M10 guest build (#13), M11 review
-  pipeline (#14) and the README mascot (#15), into `main`. Spec amendment 9
-  (2026-11-21): the host precomputes diff-mode changes, so Claude gets no Bash
-  at all.
-- **Waiting for the maintainer's merge:** M12, interface, PR #16 on
-  `feat/interface`, rebased onto `main`.
-- **In progress:** M12, interface: every task done (theme, root model, screens,
-  sudo handover, forms and consent, doctor/review/uninstall, plain mode).
-  `/code-review medium` found 10 issues; 9 fixed test-first: a phase with many
-  steps (the host phase holds 15) crashed the screen in a short terminal (now a
-  step window that keeps the current step in view); a network failure in the key
-  check stuck for that key (now only firm answers, `ErrKeyRejected`, get
-  remembered); the consent screen ignored Ctrl+C, q and Esc (now `Aborted`); the
-  login keep-alive outlived a finished run; the finished review's time kept
-  growing, and showed a huge figure before the first status; plain mode printed
-  the `--yes` hint twice; → toggled instead of picking Yes; one comment broke
-  E-Prime. Not taken: a changelog entry, since no command reaches these screens
-  until M13, which adds it. Next: the pull request, then M13 (commands).
+  pipeline (#14), the README mascot (#15) and M12 interface (#16), into `main`.
+  Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes, so
+  Claude gets no Bash at all.
+- **In progress:** M13, commands, on `feat/commands`: every task done
+  (`config.toml`, `telemetry`, `review` with `--cwe` and `--prompt`, `selftest`,
+  `canary`, `setup` with the components step and `--kernel`, `doctor` and
+  `--bundle`, `rebuild`, `uninstall` with its footprint scan, and the log in
+  every command). `/code-review medium` found 10 issues, all fixed test-first:
+  `uninstall --purge` ran `RemoveAll` on the reports folder, which `~` or
+  `/home` could name (now the reports folder must sit inside the home, and the
+  purge removes only folders holding a `summary.json`); doas and run0 prompted
+  for the password under the running review screen (now `Sandbox.Login` runs
+  before any screen); the selftest silently dropped ports, even `--port` ones,
+  past 15 (now the user's come first, with a warning for any listening port left
+  out); setup's closing selftest skipped the listening ports; the sudoers
+  account came from `$USER` (now `user.Current`); the canary accepted CWE-893
+  for CWE-89 (now a word boundary); the bundle listed sizes from before
+  redaction and ignored `--out` without `--bundle`; `telemetry on` claimed
+  reports went out under `DO_NOT_TRACK`; `listeningPorts` missed `*%iface` and
+  IPv4-mapped addresses; and some comments broke E-Prime. Next: the pull
+  request, then M14 (docs). Untested until M15: a real interactive setup, review
+  and uninstall, and doas or run0 hosts.
+- **M12 notes:** `/code-review medium` found 10 issues; 9 fixed test-first (a
+  short terminal crashed on the 15-step host phase; a network failure in the key
+  check stuck; Ctrl+C did nothing on the consent screen; the keep-alive outlived
+  a finished run; the review's time kept growing; plain mode printed the `--yes`
+  hint twice; → toggled instead of picking Yes; one comment broke E-Prime).
 - **M11 notes:** `/code-review medium` found 9 issues, all fixed test-first:
   code disks sized by bytes alone ran out of blocks and inodes with many small
   files (now blocks and entries count, and `mkfs.ext4 -N` gets an inode each); a
@@ -1322,13 +1332,13 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     whole escape sequences (payload too), stray control characters, invalid
     bytes and bidirectional overrides before Glamour sees it; error text and
     doctor details get the same. The confirm panel instead spells such bytes out
-    (`\x1b`, `‮`) through `visible`, since the preview must show every byte that
-    runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest items
-    marked created, plus reports with `--purge`) and what stays (adopted items
-    and the reports folder). Enter confirms; `q`, `n` or Esc cancels. **Fixed on
-    the way:** running the tests three times showed that, after a quit, the
-    cancelled engine's own end could replace `ErrQuit` with `context.Canceled`;
-    a quit now sticks, and a direct test checks it.
+    (`\x1b`, `\u202e`) through `visible`, since the preview must show every byte
+    that runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest
+    items marked created, plus reports with `--purge`) and what stays (adopted
+    items and the reports folder). Enter confirms; `q`, `n` or Esc cancels.
+    **Fixed on the way:** running the tests three times showed that, after a
+    quit, the cancelled engine's own end could replace `ErrQuit` with
+    `context.Canceled`; a quit now sticks, and a direct test checks it.
 - [x] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
       exists. Golden test of a full fake run.
   - _Done:_ `RunPlain(ctx, PlainConfig)` prints `charmbracelet/log` lines
@@ -1345,7 +1355,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M13. Commands (`internal/cli`)
 
-- [ ] `setup`: builds the step list (phases from spec §7) and runs it through
+- [x] `setup`: builds the step list (phases from spec §7) and runs it through
       the engine, with the TUI or plain mode. `--yes` takes its answers from
       flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
       goes missing. **Test:** a full dry run on a fake host prints every planned
@@ -1355,20 +1365,101 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `--kernel FILE`, still checked against `pins.Kernel.SHA256`; a file with any
     other hash gets refused. **Tests:** a failing download suggests the flag; a
     matching file installs; a mismatched file gets refused.
-- [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
+  - _Done:_ **`internal/setup`** assembles the steps for setup, doctor and
+    uninstall: platform checks, the new **components step** (`distro`: probes
+    one tool per package, installs only the missing ones, records only those as
+    created, and `Undo` removes recorded names that pass `CheckName`), the host
+    steps and the guest steps. Its dry-run test on a bare fake host reaches all
+    18 steps past the platform checks (14 planned, 4 not needed there) and runs
+    no command that writes; it caught that `setup.Deps` must pass hostnet's
+    `Executable` through. **Guest:** `PinnedSources.KernelFile` (`--kernel`)
+    copies a file only when it matches the pin; a failed download wraps
+    `ErrKernelUnavailable` with a hint at the flag. The build and its stamp
+    follow the chosen CodeCheck commit (`WantStamp(…, commit)`; `config.toml`
+    or, later, `rebuild --commit`). **The command:** it refuses root, applies
+    `--budget` and `--reports-dir`, and checks `--kernel`. On a terminal it asks
+    "Your details" (`tui.DetailsForm`) and then, if consent resolves to `Ask`,
+    shows the consent screen; Ctrl+C at either stops before anything changes.
+    `--yes`, plain mode and pipes take the key from `CODECHECK_API_KEY` and fail
+    before any step without it (a dry run needs none). It saves `config.toml`,
+    builds the steps through `cli.SetupHost` (fakes in tests: steps, manifest
+    store, lock), takes the footprint lock (absent before the first install),
+    and runs the engine on `tui.App` or `tui.RunPlain`. Created items merge into
+    the manifest even when a step fails, so uninstall finds them. A clean run
+    ends with the selftest. `step_finished` events reach telemetry through a
+    per-command event sink, captured after the command once consent has settled.
+    **Real check:** `setup --dry-run --plain` on this laptop passed every
+    platform check and printed the components, jail user, jailer folder, rules,
+    NetworkManager and tap plans, then stopped at the ufw check, which needs
+    root to read ufw's rules and had no terminal for the password. **For M15:**
+    a real interactive setup.
+- [x] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.
       **Tests:** healthy and drifted fake hosts.
-- [ ] `doctor --bundle [--out FILE]`: list the files first, then write a
+  - _Done:_ The hashes and drift already live in the steps' own checks: the host
+    steps compare each installed file with what they render now, and
+    `guest-image` checks `images.sha256` and the stamp. So `doctor` runs every
+    step's `Check` from the same `SetupHost` as setup and shows
+    `tui.DoctorView`, coloured only on a terminal (`colorprofile`). A check that
+    reports the privilege login lapsed gets one password prompt, then a retry; a
+    check that can't run shows "couldn't check" and counts as failed. **Real
+    check:** on this laptop, before setup, it passed the platform checks, listed
+    every missing part, and exited 1. **For M14:** the `environment_profile`
+    telemetry event (spec §11, once per setup and doctor) still needs building
+    from the platform facts.
+- [x] `doctor --bundle [--out FILE]`: list the files first, then write a
       redacted `.tar.gz` of recent logs, `doctor` output, versions and the
       environment profile. **Test:** a planted key in a log never reaches the
       archive.
-- [ ] `telemetry on|off|status`: change and show consent; `off` deletes the
+  - _Done:_ The bundle holds `doctor.txt` (the table, without colour), the
+    current and previous log files, `versions.txt` (the CLI, Go and every pin,
+    with the chosen CodeCheck commit) and `environment.txt` (architecture, CPUs,
+    kernel release and the os-release ID, ID_LIKE, VERSION_ID and PRETTY_NAME).
+    `redactBundle` replaces anything shaped like an Anthropic key (`sk-ant-…`,
+    any kind) and the home folder's path (`~`), on top of the log's own
+    Redactor. It lists the files first, writes 0600 and never overwrites
+    (`O_EXCL`); it succeeds whatever doctor found, since a failing host needs
+    the bundle most. Switching the key pattern off made the leak test fail.
+    **Logging (M3a's obligation):** the command wrapper opens the log through
+    `Env.OpenLog` (`logging.New` in the real process, nil in tests) with a fresh
+    `Redactor`, logs each command's start and outcome, and hands both to the
+    command through its context. Setup registers the API key with the redactor
+    the moment it has one, and logs each step's outcome; a test with a failing
+    step whose error quotes the key failed until that registration went in.
+- [x] `telemetry on|off|status`: change and show consent; `off` deletes the
       install id and the queue. **Tests:** each subcommand against a temp config
       folder.
-- [ ] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
+  - _Done:_ **`cli.Env`** holds what commands take from the process (files,
+    environment, home, whether stdin and stdout reach a terminal, stdin);
+    `ProcessEnv()` reads the real one, and `NewRootCommandEnv(env, factory)`
+    lets tests give every command a fake home on a `MemFS`. **Real telemetry:**
+    `realTelemetry(env)` replaces M3a's always-`Noop` placeholder: it resolves
+    consent (`DO_NOT_TRACK`, `--no-telemetry`, the stored setting, `--yes`, the
+    terminal), treats `Ask` as off outside setup's consent screen, and only on
+    `On` makes the install id and the PostHog client. A config that won't load
+    means off, never a failed command. `telemetry` alone and `telemetry status`
+    say on or off and why; `on` stores consent and makes the install id; `off`
+    stores the refusal and deletes the id and the queue. **Logging** moves to
+    the setup task, where it first matters, behind an injectable opener, since
+    tests run on an in-memory home.
+- [x] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
       `assets/canary/`) as a review with budget 5; then their pass rules (spec
       §7). **Tests** use fixture outputs.
-- [ ] `review`: flags from spec §8. **Test:** argument validation, and the
+  - _Done:_ The spec gives no exact pass rules, so these got set here.
+    **Selftest** passes only with outcome `ok` and no failed probe; a failed
+    probe names itself in the error. Extra probe ports come from `--port`
+    (repeatable) plus `listeningPorts`, which reads `ss -Hltn` and keeps ports
+    bound to every address or to the tap's (`172.16.0.1`), dropping loopback,
+    other interfaces' addresses and the proxy's 3180; at most 15, since the
+    guest's settings value holds 128 bytes. **Canary:** `assets/canary/` holds a
+    Flask `app.py` with a planted SQL injection and a README; the command writes
+    it to `~/codecheck-work/canary-src` as a one-commit git repository (git with
+    no hooks, no system or global config and no signing), reviews it with budget
+    5 and `--cwe 89`, then removes it. It passes only when the outcome reads
+    `ok`, the proxy refused nothing (so Claude Code needs no host beyond the
+    allowlist), and `report.md` names CWE-89. Both commands share `runVerify`:
+    the review screen on a terminal, or status lines otherwise.
+- [x] `review`: flags from spec §8. **Test:** argument validation, and the
       run-folder contents.
   - **`--prompt` and `--cwe`** (maintainer's choice, 2026-11-22: add both).
     CodeCheck's skill (pinned `3231a0d`) already reads both from the request's
@@ -1386,13 +1477,77 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       `Encode`/`Parse` round trips and refusals (newline, control bytes,
       over-long text, a CWE in selftest mode), and the `cc-claude` assets test
       for the composed prompt. Telemetry sends neither.
-- [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
-- [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
+  - _Done:_ **`review <path|url>`** with `--pr`, `--base`, `--budget`, `--cwe`
+    (repeatable; `89` or `CWE-89`) and `--prompt`. `reviewOptions` checks
+    everything before anything runs, with the same rules the guest applies
+    (`guestinit.ValidateCWEs`, `ValidatePrompt`, `config.NormaliseBudget`); the
+    budget defaults to `budget_usd` from `config.toml`. **Guest:**
+    `guestinit.Config` gains `CWEs` and `Prompt` (`cwes` and `prompt` keys,
+    review only; the prompt may take 1,000 bytes, every other value stays at
+    128), `jobEnv` passes `CC_CWES` and `CC_PROMPT`, and `cc-claude` checks both
+    again on its own (byte length, control characters, C1 codes and bidi
+    overrides as UTF-8 bytes, inside a function with a local `LC_ALL=C`, so
+    Claude Code keeps its locale). It adds "Hunt CWE-89 and CWE-79 first." and
+    the user's text between `<<<` and `>>>` markers, always inside one quoted
+    argument. **Wiring:** `cli.Sandbox` (a fake in tests, `realSandbox` in
+    production) runs `review.Pipeline` with `launch.Client` through the
+    privilege tool; sudo and sudo-rs use the sudoers rule, while doas and run0
+    first get the password handover on the terminal plus the keep-alive. A
+    terminal gets `tui.Review`; `--plain` or a pipe gets a status line per
+    state. **Exit code:** 0 only for `ok`; any other outcome prints the summary
+    and report folder, then exits 1 (`ErrOutcome`). Usage docs and the changelog
+    cover the flags, the CWE priority and the exit code. **Found on the way:**
+    writing files had decoded three `\u202e` escapes (two in M12's code, one in
+    this plan) into raw bidi overrides; `internal/repocheck` now fails the build
+    on any raw bidi control. **For M15:** check doas and run0 reviews for real
+    (the keep-alive must outlast an hour-long run before `cc-launch clean`).
+- [x] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
+  - _Done:_ It takes the `guest-image` step from the same `SetupHost`, wraps it
+    so its first check fails (the check after Apply runs for real), and runs it
+    through the engine with the usual confirm, password handover, lock and
+    manifest. `--commit` takes only a full hash (40 or 64 hex characters); the
+    build and its stamp use it, and `config.toml` keeps it only after a
+    successful build, so a commit that fails to fetch leaves the old one in
+    place. It refuses root, like setup.
+- [x] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.
-- [ ] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
+  - _Done:_ It lists what goes and what stays (`tui.Uninstall` on a terminal,
+    lines otherwise), needs Enter or `--yes` (`--dry-run` only lists), takes the
+    lock, and runs `step.Uninstall` on the same screens as setup. Each step gets
+    only its created items, so adopted packages and users stay. A clean run
+    removes the manifest (root `rm -f`); a failed step leaves it, so a second
+    run picks up the rest. `--purge` also removes the reports folder,
+    `~/codecheck-work` and the build cache. **Footprint scan:**
+    `hostnet.Footprint` and `guest.Footprint` list every item their steps can
+    create, from the same config the steps use, and a test in each hands those
+    items to the owning step's `Undo` and checks it acts on each one. Without a
+    manifest, uninstall keeps the files and folders that exist (a root-only
+    folder counts), the jail user if it exists, and a step's units, tap or table
+    when that step left a file; never a package, and never a firewalld or ufw
+    allowance, since nothing then says setup added them. **Test hygiene:** once
+    commands did real work, old tests that built the real environment had
+    started writing a log into the home folder of whoever ran them (I removed
+    the one this laptop got); a `TestMain` in `internal/cli` and
+    `cmd/codecheck-sandbox` now points `HOME` and the XDG folders at a temporary
+    folder and sets `DO_NOT_TRACK`, and those tests use the fake environment or
+    a failure that touches nothing.
+- [x] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
       folder, CodeCheck commit, telemetry). Hand-rolled TOML subset or
       `BurntSushi/toml`. **Test:** round trip.
+  - _Done:_ its own package, `internal/config`, since setup, review, doctor and
+    the telemetry wiring all read it. `BurntSushi/toml` v1.6.0 (December 2025).
+    Keys: `budget_usd`, `reports_dir`, `codecheck_commit` and `telemetry`
+    (absent until the consent question gets answered). `Load(fsys, path, home)`
+    gives the defaults for a missing file or missing keys, and refuses unknown
+    keys, wrong types and invalid values. `Save` checks the same, then writes
+    0600 into a 0700 folder. `Path` and `StateDir` follow `XDG_CONFIG_HOME` and
+    `XDG_STATE_HOME` when they hold absolute paths. The budget and reports rules
+    moved here from `tui`, so the form, `--yes` and `review` share them:
+    `NormaliseBudget` accepts what cc-launch and the guest accept (up to four
+    digits and two decimals, above zero, at most US$1,000). `ExpandReportsDir`
+    refuses control characters, but anything inside the user's home passes,
+    which matters where homes live in `/var/home` (Fedora Silverblue).
 
 ## M14. Docs
 

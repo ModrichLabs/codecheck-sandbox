@@ -10,14 +10,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // BlockSize fixes the config device's settings block at 4 KB: key=value lines,
 // each ending in a newline, then NUL bytes up to the end.
 const BlockSize = 4096
 
-// maxValue caps every value, so no setting can smuggle a payload.
+// maxValue caps every value but the prompt, so no setting can smuggle a
+// payload.
 const maxValue = 128
+
+// MaxPrompt caps --prompt's text, and MaxCWEs the number of --cwe ids.
+const (
+	MaxPrompt = 1000
+	MaxCWEs   = 10
+)
 
 // Mode picks what the guest does.
 type Mode string
@@ -46,16 +55,20 @@ type Config struct {
 	Scope        Scope  // review only
 	Base         string // diff reviews only: the baseline commit
 	ProbePorts   []int  // selftest only: extra host ports to try
+	// CWEs and Prompt focus a review (--cwe, --prompt); review only.
+	CWEs   []int
+	Prompt string
 }
 
 var (
 	runIDPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	budgetPattern = regexp.MustCompile(`^[0-9]{1,4}(\.[0-9]{1,2})?$`)
 	basePattern   = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+	cwesPattern   = regexp.MustCompile(`^[0-9]{1,5}(,[0-9]{1,5})*$`)
 )
 
 // keyOrder lists every key the block may hold, in the order Encode writes them.
-var keyOrder = []string{"mode", "run_id", "max_budget_usd", "scope", "base", "probe_ports"}
+var keyOrder = []string{"mode", "run_id", "max_budget_usd", "scope", "base", "probe_ports", "cwes", "prompt"}
 
 // Parse reads a settings block. It refuses anything it does not fully
 // understand: unknown or repeated keys, stray bytes, and values that fail
@@ -83,8 +96,8 @@ func Parse(b []byte) (Config, error) {
 		if _, dup := kv[key]; dup {
 			return Config{}, fmt.Errorf("config key %q: repeated", key)
 		}
-		if len(value) > maxValue {
-			return Config{}, fmt.Errorf("config key %q: value longer than %d bytes", key, maxValue)
+		if len(value) > limitFor(key) {
+			return Config{}, fmt.Errorf("config key %q: value longer than %d bytes", key, limitFor(key))
 		}
 		kv[key] = value
 	}
@@ -95,6 +108,21 @@ func Parse(b []byte) (Config, error) {
 		MaxBudgetUSD: kv["max_budget_usd"],
 		Scope:        Scope(kv["scope"]),
 		Base:         kv["base"],
+	}
+	if v, ok := kv["cwes"]; ok {
+		if !cwesPattern.MatchString(v) {
+			return Config{}, fmt.Errorf("config key \"cwes\": %q: want comma-separated numbers", v)
+		}
+		for _, f := range strings.Split(v, ",") {
+			n, _ := strconv.Atoi(f)
+			c.CWEs = append(c.CWEs, n)
+		}
+	}
+	if v, ok := kv["prompt"]; ok {
+		if v == "" {
+			return Config{}, errors.New("config key \"prompt\": empty")
+		}
+		c.Prompt = v
 	}
 	if p, ok := kv["probe_ports"]; ok {
 		ports, err := parsePorts(p)
@@ -120,6 +148,17 @@ func (c Config) Validate() error {
 	for _, p := range c.ProbePorts {
 		if p < 1 || p > 65535 {
 			return fmt.Errorf("probe port %d: want 1 to 65535", p)
+		}
+	}
+	if (len(c.CWEs) > 0 || c.Prompt != "") && c.Mode != ModeReview {
+		return fmt.Errorf("mode %s takes no cwes or prompt", c.Mode)
+	}
+	if err := ValidateCWEs(c.CWEs); err != nil {
+		return err
+	}
+	if c.Prompt != "" {
+		if err := ValidatePrompt(c.Prompt); err != nil {
+			return err
 		}
 	}
 	switch c.Mode {
@@ -176,18 +215,80 @@ func Encode(c Config) ([]byte, error) {
 		}
 		values["probe_ports"] = strings.Join(s, ",")
 	}
+	if len(c.CWEs) > 0 {
+		values["cwes"] = joinInts(c.CWEs)
+	}
+	values["prompt"] = c.Prompt
 	var buf bytes.Buffer
 	for _, k := range keyOrder {
 		if v := values[k]; v != "" {
-			if len(v) > maxValue {
-				return nil, fmt.Errorf("config key %q: value longer than %d bytes", k, maxValue)
+			if len(v) > limitFor(k) {
+				return nil, fmt.Errorf("config key %q: value longer than %d bytes", k, limitFor(k))
 			}
 			fmt.Fprintf(&buf, "%s=%s\n", k, v)
 		}
 	}
+	if buf.Len() >= BlockSize {
+		return nil, errors.New("config block: the settings outgrow the block")
+	}
 	out := make([]byte, BlockSize)
 	copy(out, buf.Bytes())
 	return out, nil
+}
+
+func limitFor(key string) int {
+	if key == "prompt" {
+		return MaxPrompt
+	}
+	return maxValue
+}
+
+func joinInts(ns []int) string {
+	s := make([]string, len(ns))
+	for i, n := range ns {
+		s[i] = strconv.Itoa(n)
+	}
+	return strings.Join(s, ",")
+}
+
+// ValidateCWEs checks --cwe ids: at most MaxCWEs, each from 1 to 99999,
+// none repeated. The host and the guest both apply it.
+func ValidateCWEs(cwes []int) error {
+	if len(cwes) > MaxCWEs {
+		return fmt.Errorf("at most %d CWE ids", MaxCWEs)
+	}
+	seen := map[int]bool{}
+	for _, n := range cwes {
+		if n < 1 || n > 99999 {
+			return fmt.Errorf("CWE id %d: want 1 to 99999", n)
+		}
+		if seen[n] {
+			return fmt.Errorf("CWE id %d: repeated", n)
+		}
+		seen[n] = true
+	}
+	return nil
+}
+
+// ValidatePrompt checks --prompt's text: valid UTF-8, at most MaxPrompt
+// bytes, printable characters only (no line breaks, tabs, escapes or
+// bidirectional overrides). It refuses rather than trims, so what the
+// guest gets equals what the user typed.
+func ValidatePrompt(p string) error {
+	switch {
+	case p == "":
+		return errors.New("the prompt holds nothing")
+	case len(p) > MaxPrompt:
+		return fmt.Errorf("the prompt runs past %d bytes", MaxPrompt)
+	case !utf8.ValidString(p):
+		return errors.New("the prompt holds invalid UTF-8")
+	}
+	for _, r := range p {
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("the prompt holds a character it can't carry (U+%04X); use one line of plain text", r)
+		}
+	}
+	return nil
 }
 
 func knownKey(k string) bool {
