@@ -52,8 +52,9 @@ _Updated 2026-11-22._
 - **Consent screen:** the maintainer approved its wording and layout
   (`internal/tui/testdata/consent.golden`) on 2026-11-22; M13 wires it into
   `setup` as it stands.
-- **Waiting on the maintainer:** `--prompt`/`--cwe`, and the kernel mirror.
-  Decided 2026-11-22: no VM size question (spec amendment 10).
+- **Waiting on the maintainer:** the kernel mirror. Decided 2026-11-22: add
+  `--prompt` and `--cwe` (M13 `review` task), and no VM size question (spec
+  amendment 10).
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1362,6 +1363,22 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       §7). **Tests** use fixture outputs.
 - [ ] `review`: flags from spec §8. **Test:** argument validation, and the
       run-folder contents.
+  - **`--prompt` and `--cwe`** (maintainer's choice, 2026-11-22: add both).
+    CodeCheck's skill (pinned `3231a0d`) already reads both from the request's
+    words, so they only add text to `cc-claude`'s prompt:
+    - `--cwe N`, repeatable, digits only (1–5 of them). It adds "Hunt CWE-N
+      first." The skill treats a named CWE as a priority, not a limit, and the
+      usage docs must say so.
+    - `--prompt TEXT`: one line, at most 1,000 bytes, printable characters only,
+      refused otherwise (not trimmed). It gets appended as a clearly marked
+      request from the user, which can name a sub-folder, a threat model or a
+      deliberate narrowing.
+    - **Both sides check:** new `guestinit.Config` keys (`cwes`, `prompt`;
+      review mode only), held to the same rules by `Parse` and by `cc-claude`,
+      which quotes the text and never evaluates it. **Tests:** host validation,
+      `Encode`/`Parse` round trips and refusals (newline, control bytes,
+      over-long text, a CWE in selftest mode), and the `cc-claude` assets test
+      for the composed prompt. Telemetry sends neither.
 - [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
