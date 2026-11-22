@@ -119,10 +119,3 @@ func TestNestedSubcommandsGetWrapped(t *testing.T) {
 		t.Errorf("command = %v, want the top-level name telemetry", fake.events[0])
 	}
 }
-
-func TestDefaultTelemetryStaysOffWithoutStoredConsent(t *testing.T) {
-	// config.toml arrives in M13; until then nothing can switch telemetry on.
-	if _, ok := defaultTelemetry(Options{}).(telemetry.Noop); !ok {
-		t.Error("defaultTelemetry must return Noop while no consent can exist")
-	}
-}

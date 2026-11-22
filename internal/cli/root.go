@@ -23,14 +23,22 @@ type Options struct {
 	NoTelemetry bool
 }
 
-// NewRootCommand builds a fresh command tree, so tests never share state.
+// NewRootCommand builds a fresh command tree for the real process, so tests
+// never share state.
 func NewRootCommand() *cobra.Command {
-	return NewRootCommandWith(defaultTelemetry)
+	env := ProcessEnv()
+	return NewRootCommandEnv(env, realTelemetry(env))
 }
 
 // NewRootCommandWith builds the command tree with the given telemetry client
 // factory; tests pass a fake.
 func NewRootCommandWith(newClient ClientFactory) *cobra.Command {
+	return NewRootCommandEnv(ProcessEnv(), newClient)
+}
+
+// NewRootCommandEnv builds the command tree against env, with the given
+// telemetry client factory.
+func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 	var opts Options
 
 	root := &cobra.Command{
@@ -63,7 +71,7 @@ func NewRootCommandWith(newClient ClientFactory) *cobra.Command {
 		stub("review", "Review a repository inside a sandboxed VM"),
 		stub("rebuild", "Rebuild the guest image, for example for a new CodeCheck commit"),
 		stub("uninstall", "Remove everything setup installed"),
-		stub("telemetry", "Show or change anonymous usage and error reporting"),
+		newTelemetryCommand(env, &opts),
 		hidden(newProxyCommand()),
 		&cobra.Command{
 			Use:   "version",

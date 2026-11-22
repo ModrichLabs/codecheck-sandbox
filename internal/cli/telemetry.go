@@ -16,12 +16,6 @@ import (
 // parsed.
 type ClientFactory func(Options) telemetry.Client
 
-// defaultTelemetry returns Noop for now. Consent needs the telemetry setting
-// from config.toml, which M13 adds; until then telemetry.Resolve can never
-// return On, so nothing may send. M13 replaces this with Resolve plus the
-// PostHog client.
-func defaultTelemetry(Options) telemetry.Client { return telemetry.Noop{} }
-
 // withTelemetry wraps every runnable command in the tree so it records
 // command_run under its top-level name (and an $exception on failure) and
 // flushes once at the end. The client gets built after the command runs, so

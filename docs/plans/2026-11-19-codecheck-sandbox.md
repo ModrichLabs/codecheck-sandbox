@@ -1362,9 +1362,22 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       redacted `.tar.gz` of recent logs, `doctor` output, versions and the
       environment profile. **Test:** a planted key in a log never reaches the
       archive.
-- [ ] `telemetry on|off|status`: change and show consent; `off` deletes the
+- [x] `telemetry on|off|status`: change and show consent; `off` deletes the
       install id and the queue. **Tests:** each subcommand against a temp config
       folder.
+  - _Done:_ **`cli.Env`** holds what commands take from the process (files,
+    environment, home, whether stdin and stdout reach a terminal, stdin);
+    `ProcessEnv()` reads the real one, and `NewRootCommandEnv(env, factory)`
+    lets tests give every command a fake home on a `MemFS`. **Real telemetry:**
+    `realTelemetry(env)` replaces M3a's always-`Noop` placeholder: it resolves
+    consent (`DO_NOT_TRACK`, `--no-telemetry`, the stored setting, `--yes`, the
+    terminal), treats `Ask` as off outside setup's consent screen, and only on
+    `On` makes the install id and the PostHog client. A config that won't load
+    means off, never a failed command. `telemetry` alone and `telemetry status`
+    say on or off and why; `on` stores consent and makes the install id; `off`
+    stores the refusal and deletes the id and the queue. **Logging** moves to
+    the setup task, where it first matters, behind an injectable opener, since
+    tests run on an in-memory home.
 - [ ] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
       `assets/canary/`) as a review with budget 5; then their pass rules (spec
       §7). **Tests** use fixture outputs.
