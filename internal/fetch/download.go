@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -79,35 +80,11 @@ func (d Downloader) DownloadSRI(ctx context.Context, rawURL, integrity, dest str
 // fetchTo downloads rawURL into a temporary file beside dest while hashing it
 // with h, and renames the file into place only when check accepts the sum.
 func (d Downloader) fetchTo(ctx context.Context, rawURL, dest string, h hash.Hash, check func(sum []byte) error) error {
-	if err := httpsOnly(rawURL); err != nil {
-		return err
-	}
-	client := http.Client{}
-	if d.Client != nil {
-		client = *d.Client
-	}
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 10 {
-			return errors.New("too many redirects")
-		}
-		return httpsOnly(req.URL.String())
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	resp, err := d.open(ctx, rawURL, filepath.Base(dest))
 	if err != nil {
 		return err
-	}
-	// The pins cover files as published. Asking for identity stops Go's
-	// transport from decoding a Content-Encoding: gzip reply behind our back.
-	req.Header.Set("Accept-Encoding", "identity")
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("downloading %s: %w", filepath.Base(dest), err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading %s: HTTP %s", filepath.Base(dest), resp.Status)
-	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".part-*")
 	if err != nil {
@@ -151,6 +128,57 @@ func (d Downloader) fetchTo(ctx context.Context, rawURL, dest string, h hash.Has
 	}
 	keep = true
 	return nil
+}
+
+// open sends an HTTPS-only GET (redirects included) and returns a 200 reply.
+func (d Downloader) open(ctx context.Context, rawURL, name string) (*http.Response, error) {
+	if err := httpsOnly(rawURL); err != nil {
+		return nil, err
+	}
+	client := http.Client{}
+	if d.Client != nil {
+		client = *d.Client
+	}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("too many redirects")
+		}
+		return httpsOnly(req.URL.String())
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	// The pins cover files as published. Asking for identity stops Go's
+	// transport from decoding a Content-Encoding: gzip reply behind our back.
+	req.Header.Set("Accept-Encoding", "identity")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", name, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("downloading %s: HTTP %s", name, resp.Status)
+	}
+	return resp, nil
+}
+
+// Get fetches a small file with no pin of its own, such as a checksum list
+// whose signature decides whether to trust it, capped at max bytes.
+func (d Downloader) Get(ctx context.Context, rawURL string, max int64) ([]byte, error) {
+	resp, err := d.open(ctx, rawURL, path.Base(rawURL))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > max {
+		return nil, fmt.Errorf("%s: %w (%d bytes)", path.Base(rawURL), ErrTooLarge, max)
+	}
+	return b, nil
 }
 
 func (d Downloader) report(ctx context.Context, name string) func(done, total int64) {

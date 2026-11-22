@@ -15,18 +15,24 @@ var (
 	PostHogHost = "https://us.i.posthog.com"
 )
 
-// FirecrackerPin names the Firecracker and jailer release tarball.
+// FirecrackerPin names the Firecracker and jailer release tarball, and the
+// two binaries setup takes from it.
 type FirecrackerPin struct {
-	Version string
-	URL     string
-	SHA256  string // matches the release's own .sha256.txt
+	Version           string
+	URL               string
+	SHA256            string // matches the release's own .sha256.txt
+	FirecrackerSHA256 string // from the release's SHA256SUMS, inside the tarball
+	JailerSHA256      string
 }
 
-// Firecracker v1.18.0 (spike S1).
+// Firecracker v1.18.0 (spike S1). The binary hashes got checked on
+// 2026-11-21 against the SHA256SUMS inside the pinned tarball.
 var Firecracker = FirecrackerPin{
-	Version: "v1.18.0",
-	URL:     "https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-x86_64.tgz",
-	SHA256:  "1ac8eec866dd5eea14efecf6323e22b23eea24054545338a5b34bc5bca6623cd",
+	Version:           "v1.18.0",
+	URL:               "https://github.com/firecracker-microvm/firecracker/releases/download/v1.18.0/firecracker-v1.18.0-x86_64.tgz",
+	SHA256:            "1ac8eec866dd5eea14efecf6323e22b23eea24054545338a5b34bc5bca6623cd",
+	FirecrackerSHA256: "b33f46cd6d88834cf6a4f8d184f08f219809c636236bffd286d233a60602a2ba",
+	JailerSHA256:      "ddadbaa15b5c942271a83b7040ca7259c8ccf92a9e08d44cce0b86fa407ba460",
 }
 
 // KernelPin names the guest kernel.

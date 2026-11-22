@@ -11,22 +11,23 @@ _Updated 2026-11-21._
   until each gets real behaviour).
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
-  (#7), M6 host network (#9), M7 egress proxy (#10) and M8 guest init (#11) into
-  `main`. Spec amendment 9 (2026-11-21): the host precomputes diff-mode changes,
-  so Claude gets no Bash at all.
-- **In progress:** M9, launch helper, on branch `feat/launch-helper` in its own
-  worktree. Every M9 task done. `/code-review medium` and a background security
-  review found 7 issues, all fixed test-first: two symlink races where root
-  chowned or chmodded by a path the user or `fcjail` controlled (now through
-  descriptors, with the result folder handed over last); systemd's
-  `RuntimeMaxSec` firing before `Wait`'s kill, so timeouts looked like successes
-  (now `Wait` kills at the limit and the scope's limit adds a tenth as a
-  backstop); `debugfs` open failures read as missing files (only "File not
-  found" now means missing, and root hands `debugfs` the disk as `/dev/stdin`);
-  cleanup after a failed stop; a timed-out build reported as a results failure;
-  `nft` without `CleanEnv`. Next: the M9 pull request, then M10 (guest build)
-  once it merges. Untested until a real boot (M15): `--parent-cgroup` inside the
-  scope.
+  (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
+  launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
+  precomputes diff-mode changes, so Claude gets no Bash at all.
+- **In progress:** M10, guest build, on branch `feat/guest-build` in its own
+  worktree. Every M10 task done (broken down into six, since nothing installed
+  Firecracker yet). `/code-review medium` found 7 issues; 6 fixed test-first:
+  the kernel got installed from the user's cache unchecked (now hashed as the
+  root-owned copy and refused unless it equals its pin, and `guest-image`
+  compares it with the stamp); a failed build recorded nothing for uninstall; a
+  rebuild failing halfway left new files beside old sums (now everything stages
+  as `*.new` and four renames swap it in last); a nil dereference in `treeSize`;
+  `extractMembers` could keep one binary of two; `Base` mixed its own pin with
+  the global one. Declined: a changelog entry, since no command reaches these
+  steps until M13 (as for M7–M9). Next: the M10 pull request, then M11 (review
+  pipeline) once it merges. Untested until a real boot (M15): `--parent-cgroup`
+  inside the scope, and the whole build through `cc-launch` (only the builder's
+  initramfs and `cc-guestinit` booted for real so far).
 - **Open question for the maintainer:** the kernel pin points at Firecracker's
   CI bucket, not a release of this repository; mirroring it means publishing a
   GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
@@ -999,7 +1000,7 @@ of repeating them.
 
 ## M10. Guest build (`internal/guest`)
 
-- [ ] `guest/build.go` (no network at any point):
+- [x] `guest/build.go` (no network at any point):
   1. Download and verify the base, kernel, Firecracker and Claude Code pins
      (M5).
   2. Create a blank `target.ext4` (3 GB) and a read-only inputs disk: the
@@ -1015,8 +1016,81 @@ of repeating them.
   Progress events come from the streamed serial log. **Tests:** sequence and
   failure handling with fakes; the real build runs in M15.
 
-- [ ] `GuestBuildStep`, whose `Check` passes when the image hashes match and the
-      pins have not changed since the last build.
+- [x] `GuestBuildStep`, whose `Check` passes when the image hashes match and the
+      pins have not changed since the last build. (Both done through the
+      breakdown below; `GuestBuildStep` became `guest-image`.)
+
+Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
+`cc-launch` refuses to boot without them):
+
+- [x] **Firecracker binaries:** pin the SHA-256 of `firecracker` and `jailer`
+      themselves (taken from the release's own `SHA256SUMS`, inside the pinned
+      tarball), and `fetch.FirecrackerRelease` takes just those two members out
+      of the tarball, sharing the npm tarball's safe extraction.
+  - _Done:_ `pins.Firecracker` gains `FirecrackerSHA256` and `JailerSHA256`,
+    checked against the release's `SHA256SUMS`. `extractMembers` replaces the
+    npm tarball's single-file extraction: it refuses the whole tarball on any
+    unsafe entry, caps and hashes each member, and moves them into place only
+    once all pass. A throwaway test fetched the real v1.18.0 release through it.
+- [x] **Initramfs** (`guest/initramfs.go`): a newc cpio holding `/init`
+      (`cc-guestinit`) and `/dev/console`, so the builder's serial log shows.
+  - _Done:_ `guest.Initramfs(init)` writes `dev` (0755), `dev/console` (char
+    5:1, 0600) and `init` (0755), all root with zero mtimes, so the bytes stay
+    reproducible. Tests parse it and check it with the real `cpio -itv`. **Real
+    boot, as a normal user:** the pinned kernel under Firecracker v1.18.0 ran
+    the real `cc-guestinit` from it as PID 1, which printed
+    `cc-guestinit: reading /dev/vdb: … no such file` on the serial console (no
+    config disk attached) and rebooted; Firecracker exited 0.
+- [x] **Inputs disk** (`guest/inputs.go`): lay out the names `guestinit.Build`
+      expects, then `mkfs.ext4 -d` as the user.
+  - _Done:_ `StageInputs` writes `claude`, `cc-guestinit`, `cc-claude` and
+    `cc-selftest` (from `assets.Guest`), `ca.crt` and `plugin/`, unpacking the
+    `git archive` output with only plain files and folders, nothing escaping,
+    and 64 MiB at most. `MakeInputs` stages in a fresh folder, sizes the disk at
+    the files plus a quarter plus 32 MiB, runs `mkfs.ext4 -q -F -L cc-inputs -d`
+    as the user, and removes the staging folder. `lookTool` also searches
+    `/usr/sbin` and `/sbin`, which some distributions leave off a user's PATH.
+    Tests build a real disk and read it back with the real `debugfs`; a
+    throwaway test staged the real archive of the pinned CodeCheck commit (12
+    files, pax header skipped).
+- [x] **Launch client** (`launch/client.go`): run `cc-launch` through the
+      privilege tool with its console streamed and its exit code kept; M11
+      reuses it.
+  - _Done:_ `system.PrivRunner.RunStreaming` wraps a root command for the
+    privilege tool and streams its stderr, keeping the first 4 KB to spot an
+    expired login (`ErrLoginExpired`). `launch.Client` has `Run`, `Build` and
+    `Clean`, returns `*ExitError` with a plain-language meaning for each exit
+    code, and the codes now live in `launch` for both sides. The import guard
+    still passes.
+- [x] **Build** (`guest/build.go`): the four steps above, plus installing the
+      images, `images.sha256` and a build stamp, then `cc-launch clean`.
+  - _Done:_ `Builder.Build` takes its inputs through a `Sources` interface.
+    `PinnedSources` reuses a cached file that matches its pin. The Ubuntu base
+    needs `SHA256SUMS` with a good signature naming the pinned hash before the
+    image downloads, through a new capped, HTTPS-only `Downloader.Get`. The
+    builder writes `inputs.ext4`, `init.cpio` and `config.img` (mode `build`, a
+    fresh run id) into the user's cache, then installs the five run files
+    root-owned into a new run folder and calls `cc-launch build`. It hashes the
+    resulting `rootfs.ext4`, moves it to `/var/lib/codecheck-sandbox/`, installs
+    the kernel, and writes `images.sha256` (the installed files' actual hashes)
+    and `build.json`, a stamp of every input: the pins, the CA, `cc-guestinit`
+    and the guest scripts. Every path out after the run folder exists runs
+    `cc-launch clean`. Tests drive it with fakes, a real `mkfs.ext4` and the
+    real signed Ubuntu sums (a failed signature stops before the image
+    downloads). **For M13:** point `GuestInit` at the `cc-guestinit` shipped
+    beside the CLI, and stream the console to the progress view.
+- [x] **Steps** (`guest/steps.go`): `guest-firecracker` and `guest-image`.
+  - _Done:_ both in `PhaseGuest`, registered with telemetry, with the fetch and
+    the build passed in as functions. `guest-firecracker` passes when both
+    installed binaries match their pins, and installs them with
+    `install -D -m 0755 -o root -g root -T`. `guest-image` passes only when
+    `build.json` equals what the current inputs would build, and the kernel and
+    root disk match both `images.sha256` and the stamp. So a new pin, CA (M7's
+    note), `cc-guestinit` or guest script wants a rebuild. Apply records each
+    file it created; Undo removes recorded files, then empty recorded folders.
+    **For M13:** wire `Deps` (cache under `~/.cache/codecheck-sandbox/build`,
+    the shipped `cc-guestinit`, a `launch.Client` with the console) into `setup`
+    and `rebuild`.
 
 ## M11. Review pipeline (`internal/review`)
 

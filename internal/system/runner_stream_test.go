@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -66,6 +67,53 @@ func TestPrivRunnerRefusesAStdinFile(t *testing.T) {
 	p := PrivRunner{Inner: &FakeRunner{}, Tool: Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}}
 	if _, err := p.Run(context.Background(), Cmd{Name: "true", Root: true, StdinFile: os.Stdin}); err == nil {
 		t.Error("PrivRunner accepted a root command it can't honour")
+	}
+}
+
+// stderrRunner writes a scripted stderr to the command's writer.
+type stderrRunner struct {
+	stderr string
+	code   int
+	got    Cmd
+}
+
+func (s *stderrRunner) Run(_ context.Context, c Cmd) (Result, error) {
+	s.got = c
+	if c.Stderr != nil {
+		c.Stderr.Write([]byte(s.stderr))
+	}
+	return Result{Code: s.code}, nil
+}
+
+func TestRunStreamingWrapsAndStreams(t *testing.T) {
+	inner := &stderrRunner{stderr: "console line\n", code: 6}
+	p := PrivRunner{Inner: inner, Tool: Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}}
+	var console bytes.Buffer
+	res, err := p.RunStreaming(context.Background(), Cmd{Name: "/usr/local/lib/codecheck-sandbox/bin/cc-launch", Args: []string{"build", "x"}}, &console)
+	if err != nil || res.Code != 6 {
+		t.Fatalf("RunStreaming = %+v, %v", res, err)
+	}
+	want := []string{"-n", "--", "/usr/local/lib/codecheck-sandbox/bin/cc-launch", "build", "x"}
+	if inner.got.Name != "/usr/bin/sudo" || !reflect.DeepEqual(inner.got.Args, want) || inner.got.Root {
+		t.Errorf("ran %s %v", inner.got.Name, inner.got.Args)
+	}
+	if console.String() != "console line\n" {
+		t.Errorf("console = %q", console.String())
+	}
+}
+
+func TestRunStreamingSpotsAnExpiredLogin(t *testing.T) {
+	inner := &stderrRunner{stderr: "sudo: a password is required\n", code: 1}
+	p := PrivRunner{Inner: inner, Tool: Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}}
+	if _, err := p.RunStreaming(context.Background(), Cmd{Name: "cc-launch"}, &bytes.Buffer{}); !errors.Is(err, ErrLoginExpired) {
+		t.Errorf("err = %v, want ErrLoginExpired", err)
+	}
+}
+
+func TestRunStreamingRefusesEnv(t *testing.T) {
+	p := PrivRunner{Inner: &stderrRunner{}, Tool: Tool{Kind: ToolSudo, Path: "/usr/bin/sudo"}}
+	if _, err := p.RunStreaming(context.Background(), Cmd{Name: "x", Env: []string{"A=b"}}, &bytes.Buffer{}); err == nil {
+		t.Error("RunStreaming accepted Env it would drop")
 	}
 }
 

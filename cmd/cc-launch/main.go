@@ -29,18 +29,19 @@ import (
 	"github.com/ModrichLabs/codecheck-sandbox/internal/system"
 )
 
-// The documented exit codes.
+// The documented exit codes live in the launch package, which the CLI's
+// client shares.
 const (
-	ExitOK          = 0
-	ExitFailure     = 1
-	ExitUsage       = 2
-	ExitBusy        = 3
-	ExitRefused     = 4
-	ExitBoot        = 5
-	ExitTimeout     = 6
-	ExitResults     = 7
-	ExitEnvironment = 8
-	ExitInterrupted = 130
+	ExitOK          = launch.ExitOK
+	ExitFailure     = launch.ExitFailure
+	ExitUsage       = launch.ExitUsage
+	ExitBusy        = launch.ExitBusy
+	ExitRefused     = launch.ExitRefused
+	ExitBoot        = launch.ExitBoot
+	ExitTimeout     = launch.ExitTimeout
+	ExitResults     = launch.ExitResults
+	ExitEnvironment = launch.ExitEnvironment
+	ExitInterrupted = launch.ExitInterrupted
 )
 
 const usage = "usage: cc-launch <run-id> | cc-launch build <run-id> | cc-launch clean <run-id>"
