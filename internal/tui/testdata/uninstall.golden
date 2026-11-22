@@ -1,0 +1,30 @@
+╭ CodeCheck Sandbox uninstall ─────────────────────────────────────────────────────────────────────╮
+│ These go:                                                                                        │
+│   user fcjail                                                                                    │
+│   file /etc/codecheck-sandbox/rules.nft                                                          │
+│   unit codecheck-tap.service                                                                     │
+│                                                                                                  │
+│ These stay:                                                                                      │
+│   package e2fsprogs  (here before setup)                                                         │
+│   ~/codecheck-reports  (your reports; --purge removes them)                                      │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ [Enter] uninstall   [q] cancel                                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

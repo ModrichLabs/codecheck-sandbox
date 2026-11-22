@@ -2,7 +2,7 @@
 
 ## Where we are (resume here)
 
-_Updated 2026-11-21._
+_Updated 2026-11-22._
 
 - **Done:** M0 (spikes S1–S5 and the gate; all spec amendments approved) and M1
   (scaffold, command tree, licence, community files, documentation skeleton).
@@ -12,33 +12,51 @@ _Updated 2026-11-21._
 - **Merged:** M1 (#1), M2 the system layer (#2), M3 the step engine (#3), M3a
   logging and telemetry (#4), M4 platform and distro (#5), M5 pins and downloads
   (#7), M6 host network (#9), M7 egress proxy (#10), M8 guest init (#11) and M9
-  launch helper (#12) into `main`. Spec amendment 9 (2026-11-21): the host
-  precomputes diff-mode changes, so Claude gets no Bash at all.
-- **Waiting for the maintainer's merge:** M10, guest build, PR #13 on
-  `feat/guest-build`, reviewed and fixed.
-- **In progress:** M11, review pipeline, on branch `feat/review-pipeline`,
-  stacked on `feat/guest-build` (it uses M10's `launch.Client`); rebase onto
-  `main` once #13 merges. Every M11 task done. `/code-review medium` found 9
-  issues, all fixed test-first: code disks sized by bytes alone ran out of
-  blocks and inodes with many small files (now blocks and entries count, and
-  `mkfs.ext4 -N` gets an inode each); a failed preparation left the clone
-  behind; a token in a source URL reached `summary.json` and git's error text
-  (now `DisplayTarget` and scrubbed errors); a failed denial copy left a
-  root-only file that broke the report; a transcript line over the scanner's
-  buffer hid the result; trimmed diff and status output; two runs in one second
-  shared a report folder; the size error printed the wrong number; denials past
-  the cap went uncounted (now a `{"dropped":N}` line). Next: the M11 pull
-  request (stacked on #13), then M12 (interface). Untested until a real boot
-  (M15): `--parent-cgroup` inside the scope, and full builds and reviews through
-  `cc-launch` (only the builder's initramfs and `cc-guestinit` booted for real
-  so far).
-- **Open question for the maintainer:** the kernel pin points at Firecracker's
-  CI bucket, not a release of this repository; mirroring it means publishing a
-  GPL-2.0 binary, with its source-offer duties, so that waits for a decision.
+  launch helper (#12), then on 2026-11-22 M10 guest build (#13), M11 review
+  pipeline (#14) and the README mascot (#15), into `main`. Spec amendment 9
+  (2026-11-21): the host precomputes diff-mode changes, so Claude gets no Bash
+  at all.
+- **Waiting for the maintainer's merge:** M12, interface, PR #16 on
+  `feat/interface`, rebased onto `main`.
+- **In progress:** M12, interface: every task done (theme, root model, screens,
+  sudo handover, forms and consent, doctor/review/uninstall, plain mode).
+  `/code-review medium` found 10 issues; 9 fixed test-first: a phase with many
+  steps (the host phase holds 15) crashed the screen in a short terminal (now a
+  step window that keeps the current step in view); a network failure in the key
+  check stuck for that key (now only firm answers, `ErrKeyRejected`, get
+  remembered); the consent screen ignored Ctrl+C, q and Esc (now `Aborted`); the
+  login keep-alive outlived a finished run; the finished review's time kept
+  growing, and showed a huge figure before the first status; plain mode printed
+  the `--yes` hint twice; → toggled instead of picking Yes; one comment broke
+  E-Prime. Not taken: a changelog entry, since no command reaches these screens
+  until M13, which adds it. Next: the pull request, then M13 (commands).
+- **M11 notes:** `/code-review medium` found 9 issues, all fixed test-first:
+  code disks sized by bytes alone ran out of blocks and inodes with many small
+  files (now blocks and entries count, and `mkfs.ext4 -N` gets an inode each); a
+  failed preparation left the clone behind; a token in a source URL reached
+  `summary.json` and git's error text (now `DisplayTarget` and scrubbed errors);
+  a failed denial copy left a root-only file that broke the report; a transcript
+  line over the scanner's buffer hid the result; trimmed diff and status output;
+  two runs in one second shared a report folder; the size error printed the
+  wrong number; denials past the cap went uncounted (now a `{"dropped":N}`
+  line). Untested until a real boot (M15): `--parent-cgroup` inside the scope,
+  and full builds and reviews through `cc-launch` (only the builder's initramfs
+  and `cc-guestinit` booted for real so far).
+- **Kernel source (decided 2026-11-22):** keep the pin on Firecracker's CI
+  bucket and distribute no kernel ourselves, so no GPL-2.0 source duties. M13
+  adds a `--kernel FILE` fallback and M14 a scheduled link check; building our
+  own kernel in CI waits in "Deferred" for before 1.0, or for the day the
+  upstream file goes.
 - **Dependency pins:** choose versions at least two weeks old;
-  `charm.land/log/v2` v2.0.1 and `posthog-go` v1.40.1 so far.
-- **Waiting on the maintainer:** nothing until M12's telemetry consent screen,
-  unless a task blocks.
+  `charm.land/log/v2` v2.0.1, `posthog-go` v1.40.1, and M12's Charm set
+  (bubbletea v2.1.1, bubbles v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour
+  v2.0.1, teatest v2 at `c83711a`).
+- **Consent screen:** the maintainer approved its wording and layout
+  (`internal/tui/testdata/consent.golden`) on 2026-11-22; M13 wires it into
+  `setup` as it stands.
+- **Waiting on the maintainer:** nothing open. Decided 2026-11-22: add
+  `--prompt` and `--cwe` (M13 `review` task), no VM size question (spec
+  amendment 10), and the kernel source above.
 - **Machine facts for later milestones:** the spike files live outside the
   repository in `~/spike/` (Firecracker v1.18.0 binaries and the guest kernel in
   `~/spike/fc/`, the Ubuntu squashfs in `~/spike/ubuntu/`, the Claude Code
@@ -1199,27 +1217,131 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M12. Interface (`internal/theme`, `internal/tui`)
 
-- [ ] `theme/theme.go`: Lip Gloss adaptive palette, plus the styles for sidebar,
+- [x] `theme/theme.go`: Lip Gloss adaptive palette, plus the styles for sidebar,
       panels, ✓ ✗ ⣾ · and keys. Test: renders at the ASCII profile.
-- [ ] `tui/app.go`: the root model that routes engine events to screens. Quit
+  - _Done:_ `theme.New(isDark)` picks each colour with `lipgloss.LightDark`;
+    `Mark(State)` gives ✓ ✗ ▸ ⣾ ·, `KeyHelp` the `[Enter] run   [q] quit` line,
+    and `Panel`/`AlertPanel` a rounded box of an exact width with its title set
+    into the top edge (Lip Gloss v2 draws no border titles). Tests run the
+    output through `colorprofile.Writer` at the ASCII and true-colour profiles.
+    **Versions** (each at least two weeks old): bubbletea v2.1.1, bubbles
+    v2.2.1, huh v2.0.3, lipgloss v2.0.6, glamour v2.0.1, and teatest v2 at
+    `c83711a` (March 2026); each task adds the ones it first imports. **Screen
+    tests:** golden files hold each screen's view as plain text at 100×30
+    (colour codes stripped), and teatest drives the key-press flows; raw teatest
+    output records the renderer's escape sequences, which would break on any
+    renderer change.
+- [x] `tui/app.go`: the root model that routes engine events to screens. Quit
       through `q` or Ctrl-C asks for confirmation during root steps.
+  - _Done:_ `tui.New(Config)` takes the title, theme, sidebar entries, the
+    ordered steps and a `RunFunc` (a closure over `step.Run`; the `App` fills in
+    `Events`, and later `Confirm` and `Elevate`). The engine runs on its own
+    goroutine; **one listener** at a time reads the next event or the run's end,
+    and since the engine blocks on each event until read, every event reaches
+    `Update` before the run's end does. "Root step" means the current step's
+    plan says `NeedsRoot` and it hasn't finished; quitting then asks first,
+    otherwise it quits at once. Quitting cancels the engine's context and leaves
+    `ErrQuit` in `Err()`. Tests run the model through a small synchronous
+    harness (each Cmd on a goroutine, its message back through `Update`), so
+    they can inspect the model between messages.
 - [ ] `tui/sidebar.go`, `tui/steplist.go`, `tui/confirm.go` (commands, the `d`
       key opens a viewport of files, Enter, `s`, `q`), `tui/progress.go`,
       `tui/failure.go` (cause, fix, `r` retry). Each gets a `teatest` golden
       test at 100×30.
-- [ ] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
+  - _Done:_ The frame matches the spec §2 mock-up: the title set into a rounded
+    border, an 18-column sidebar, and the current phase's steps with the
+    screen's body below and the help line pinned to the bottom. **Confirm:** the
+    engine's `Confirm` hands the plan over a request channel (read by the same
+    single listener) and waits; the panel lists each command as a shell would
+    read it and each file as `write PATH (MODE, N bytes)`, in the alert colour
+    when the plan needs root. `d` opens a viewport with every command and each
+    file's exact bytes; Enter there does nothing, so nothing gets approved
+    unseen. **`s` declines**: the engine has no optional steps, so a declined
+    step ends the run with `step.ErrDeclined`, and the failure screen says so.
+    **Progress** draws a static bar (`ViewAs`) from the latest event.
+    **Failure** shows the cause and a fix: an error that implements `tui.Fixer`
+    brings its own, and known sentinels (login expired, no privilege tool,
+    declined, still failing) get set text. **`r` retries** the whole run;
+    finished steps pass their checks and get skipped. Goldens live in
+    `internal/tui/testdata/` (`go test ./internal/tui -update` rewrites them);
+    every screen test also checks the 100×30 bounds.
+- [x] `tui/sudo.go`: on a `NeedsSudo` event, hand over through
       `tea.ExecProcess(sudo -v)`, then start the keepalive. A unit test checks
       the message flow. The manual checklist goes in `docs/manual-tests.md`.
-- [ ] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
+  - _Done:_ `Config.Handover` (nil leaves the engine's `Elevate` unset) holds
+    `Exec`, which hands the terminal over, and `KeepAlive`.
+    `NewHandover(tool, runner)` wires `tea.ExecProcess(LoginCommand(tool))` and
+    `system.StartKeepAlive`. **`LoginCommand`:** `sudo -v -p "<who asks>"` for
+    sudo and sudo-rs, and `<tool> true` for doas and run0. The engine's
+    `Elevate` travels over the same request channel as `Confirm`; a good login
+    restarts the keep-alive, cancelling the previous one, and quitting stops it.
+    Keep-alive failures just get drained: a lapse surfaces as `ErrLoginExpired`
+    on the next root command, and the engine asks for another handover (M2).
+    While the tool holds the terminal, the main pane says it waits for the
+    password. `docs/manual-tests.md` holds the hand checks (prompt, wrong
+    password, Ctrl-C, lapse, quitting).
+- [x] `tui/forms.go`: `huh` forms for budget, reports folder, VM size and API
       key. The API key field uses `EchoModePassword`, and its validator calls
       `/v1/models` through an injectable client. Tests cover the validators.
   - A telemetry consent step: default "No", with a viewport showing a sample
     payload rendered from real event structs. **Test:** the default stays off,
     and the sample holds no field outside the event types.
-- [ ] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
+  - _Done:_ **`DetailsForm(&Details, FormDeps)`**: page one asks for the key
+    (`EchoModePassword`); page two for the budget and reports folder. The key
+    validator checks the format first (errors never repeat the key), then
+    `FormDeps.CheckKey`; huh validates on Enter and again on blur, never per
+    keystroke, so the validator remembers its last answer and calls Anthropic
+    once per key. `KeyChecker` lists models from the host, with a 10-second
+    limit and plain-words errors for 401, 403 and others. The call blocks the
+    form while it runs. `ParseBudget` takes `25`, `$25` or `US$25`, from above
+    zero up to US$1,000 (`MaxBudget`). `ExpandReportsDir` expands `~` and
+    refuses relative paths, `/` and the system's own folders. **Consent:**
+    `tui.Consent` starts on "No"; `y` or → picks yes, and Enter confirms. A
+    filled or hollow dot marks the choice where colour can't. Its viewport shows
+    `SamplePayload`: one event of each type from `telemetry.Sample`, passed
+    through `telemetry.Payload`, the function `Capture` now uses itself, so the
+    screen matches what gets queued. A test checks that `Payload` matches the
+    queue, and the sample's step ID stays tied to a real host step through a
+    `hostnet` test. **Approved 2026-11-22:** the maintainer signed off the
+    consent wording and layout (`internal/tui/testdata/consent.golden`). **VM
+    size dropped** (maintainer's choice, 2026-11-22; spec amendment 10):
+    `cc-launch` fixes each mode's shape, so the form no longer asks. **For
+    M13:** `FormDeps.Home` must hold the user's home folder.
+- [x] `tui/doctor.go` (a results table), `tui/review.go` (status, then the
       Glamour report), and `tui/uninstall.go` (a confirm list). Golden tests.
-- [ ] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
+  - _Done:_ **`DoctorView(theme, rows, width)`** prints a Lip Gloss table
+    (static output, so not the interactive bubbles table) with a tally, sized to
+    its content and capped at the width. **`tui.Review`** runs a `ReviewFunc` (a
+    closure over `review.Pipeline`) on its own goroutine and shows the target,
+    the live state from `Pipeline.Status`, a status list and the elapsed time,
+    ticking each second. Once done, it shows the outcome, cost, sub-agents,
+    warnings and folder, then `report.md` through Glamour in a viewport.
+    **Quitting a running review** asks, cancels, then waits for the pipeline to
+    shut the VM down and run `cc-launch clean` before it quits. **Terminal
+    safety:** `report.md` quotes code the model read, so `sanitise` removes
+    whole escape sequences (payload too), stray control characters, invalid
+    bytes and bidirectional overrides before Glamour sees it; error text and
+    doctor details get the same. The confirm panel instead spells such bytes out
+    (`\x1b`, `‮`) through `visible`, since the preview must show every byte that
+    runs or goes on disk. **`tui.Uninstall`** lists what goes (manifest items
+    marked created, plus reports with `--purge`) and what stays (adopted items
+    and the reports folder). Enter confirms; `q`, `n` or Esc cancels. **Fixed on
+    the way:** running the tests three times showed that, after a quit, the
+    cancelled engine's own end could replace `ErrQuit` with `context.Canceled`;
+    a quit now sticks, and a direct test checks it.
+- [x] `tui/plain.go`: a line printer for `--plain`, `--yes` or when no TTY
       exists. Golden test of a full fake run.
+  - _Done:_ `RunPlain(ctx, PlainConfig)` prints `charmbracelet/log` lines
+    without timestamps through a `colorprofile.Writer`, so piped output carries
+    no colour codes. Events and approval questions pass through one loop, so
+    lines come out in the engine's order. Plans print as `# cmd` for root and
+    `$ cmd` for the user's own. Progress prints once per new tenth.
+    **Approval:** `--yes` approves everything; otherwise `PlainConfig.In`
+    answers `Run <step>? [y/N]` (only `y` or `yes` counts, and end of input
+    means no). With neither, a plan stops the run with `ErrNeedsYes`, since the
+    engine treats a nil `Confirm` as approval. **For M13:** pass `os.Stdin` as
+    `In` for `--plain` on a terminal, nil when stdin has no terminal; `Elevate`
+    there runs the login command straight on the terminal.
 
 ## M13. Commands (`internal/cli`)
 
@@ -1228,6 +1350,11 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
       goes missing. **Test:** a full dry run on a fake host prints every planned
       command and changes nothing (`FakeRunner` sees no `Root` writes).
+  - **Kernel fallback** (maintainer's choice, 2026-11-22): when the pinned
+    kernel URL fails, setup says the upstream file may have moved and accepts
+    `--kernel FILE`, still checked against `pins.Kernel.SHA256`; a file with any
+    other hash gets refused. **Tests:** a failing download suggests the flag; a
+    matching file installs; a mismatched file gets refused.
 - [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.
       **Tests:** healthy and drifted fake hosts.
@@ -1243,12 +1370,28 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       §7). **Tests** use fixture outputs.
 - [ ] `review`: flags from spec §8. **Test:** argument validation, and the
       run-folder contents.
+  - **`--prompt` and `--cwe`** (maintainer's choice, 2026-11-22: add both).
+    CodeCheck's skill (pinned `3231a0d`) already reads both from the request's
+    words, so they only add text to `cc-claude`'s prompt:
+    - `--cwe N`, repeatable, digits only (1–5 of them). It adds "Hunt CWE-N
+      first." The skill treats a named CWE as a priority, not a limit, and the
+      usage docs must say so.
+    - `--prompt TEXT`: one line, at most 1,000 bytes, printable characters only,
+      refused otherwise (not trimmed). It gets appended as a clearly marked
+      request from the user, which can name a sub-folder, a threat model or a
+      deliberate narrowing.
+    - **Both sides check:** new `guestinit.Config` keys (`cwes`, `prompt`;
+      review mode only), held to the same rules by `Parse` and by `cc-claude`,
+      which quotes the text and never evaluates it. **Tests:** host validation,
+      `Encode`/`Parse` round trips and refusals (newline, control bytes,
+      over-long text, a CWE in selftest mode), and the `cc-claude` assets test
+      for the composed prompt. Telemetry sends neither.
 - [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.
 - [ ] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
-      folder, VM size, CodeCheck commit, telemetry). Hand-rolled TOML subset or
+      folder, CodeCheck commit, telemetry). Hand-rolled TOML subset or
       `BurntSushi/toml`. **Test:** round trip.
 
 ## M14. Docs
@@ -1263,6 +1406,12 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
       and review flow, and trust boundaries; check each claim against the code.
 - [ ] `README.md`: final quick start and limits (Linux with KVM, x86_64, one VM
       at a time). Fill in `CHANGELOG.md` `[Unreleased]`.
+- [ ] `.github/workflows/pins.yml`: a weekly scheduled check (plus manual
+      `workflow_dispatch`) that every pinned download URL in `internal/pins`
+      still answers, and that the guest kernel still matches its SHA-256. On a
+      failure it opens or updates one issue, so a vanished upstream kernel shows
+      up before a user's setup does. Third-party actions pinned by commit hash;
+      the job gets `issues: write` and nothing more.
 - [ ] Update the maintainer's private deployment plan document: a note at the
       top that the CLI now automates it, plus the proxy and key-injection
       change. (The maintainer has the link.)
@@ -1301,6 +1450,11 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 - A nested-KVM QEMU test matrix for Ubuntu and Fedora (spec §9, "later").
 - Parallel reviews.
 - Release binaries.
+- **Our own guest kernel** (before 1.0, or as soon as the pinned upstream file
+  goes): build 6.1.x from kernel.org's source with Firecracker's published guest
+  config in this repository's CI, and release the binary with its exact source
+  tarball, config and build script (GPL-2.0). It needs a new pin, a repeat of
+  spike S1's boot checks, and ongoing kernel security updates.
 
 ## Verification
 

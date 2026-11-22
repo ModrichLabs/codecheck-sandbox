@@ -1,0 +1,30 @@
+╭ CodeCheck review ────────────────────────────────────────────────────────────────────────────────╮
+│ github.com/acme/widget (PR 42)                                                                   │
+│                                                                                                  │
+│ running 7m05s                                                                                    │
+│                                                                                                  │
+│ ✓ preparing                                                                                      │
+│ ✓ booting                                                                                        │
+│ ⣾ running                                                                                        │
+│ · finished                                                                                       │
+│ · collecting                                                                                     │
+│                                                                                                  │
+│ Cost and sub-agent counts arrive once the VM finishes.                                           │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ [q] stop                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

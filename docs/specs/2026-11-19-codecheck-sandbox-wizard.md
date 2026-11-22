@@ -284,7 +284,6 @@ copies and validates (size limits, ext4 superblock check).
    - The API key: hidden input, tested against `/v1/models` through the host.
    - The default budget (US$25).
    - The reports folder.
-   - VM size (scaled to the host).
    - The CodeCheck commit, defaulting to `3231a0d`; changes come later through
      `rebuild --commit`.
    - Anonymous usage and error reporting (§11): off unless chosen, with a sample
@@ -436,6 +435,12 @@ needs the user's consent.
    with the fixed `--tools` list leaves Claude no shell. The host now writes
    both outputs to the code disk, and `cc-claude`'s prompt points Claude at
    them; Claude never gets Bash, and the planned git allowlist goes.
+10. **No VM size question** (M12, approved 2026-11-22): `cc-launch` fixes each
+    mode's shape (a review gets 2 vCPUs and 2 GiB), since a root helper should
+    take as little from its caller as it can, and Claude Code inside the VM
+    mostly waits on the API. "Your details" drops the VM size question. If real
+    reviews in M15 run short of memory, a root-owned size setting that setup
+    writes and `cc-launch` reads can come back then.
 
 ## Review outcome (independent Plan-agent review)
 

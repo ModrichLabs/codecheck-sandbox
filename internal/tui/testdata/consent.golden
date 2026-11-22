@@ -1,0 +1,30 @@
+╭ CodeCheck Sandbox setup ─────────────────────────────────────────────────────────────────────────╮
+│ Anonymous usage and error reporting                                                              │
+│                                                                                                  │
+│ Help improve codecheck-sandbox by sending anonymous counts: which commands ran, how each step    │
+│ ended, banded durations and costs, your distro and firewall type, and the kind of any error. It  │
+│ never sends code, file paths, repository names, prompts, findings, error messages, your API key, │
+│ hostnames or IP addresses. Events go to PostHog (US) under a random id made on this machine.     │
+│ Change your mind any time with codecheck-sandbox telemetry on or off. Below, exactly what gets   │
+│ sent:                                                                                            │
+│ ╭ Sample payload ──────────────────────────────────────────────────────────────────────────────╮ │
+│ │ {                                                                                            │ │
+│ │   "distinct_id": "<a random id made on this machine>",                                       │ │
+│ │   "event": "command_run",                                                                    │ │
+│ │   "properties": {                                                                            │ │
+│ │     "$geoip_disable": true,                                                                  │ │
+│ │     "$process_person_profile": false,                                                        │ │
+│ │     "cli_version": "0.1.0-dev",                                                              │ │
+│ │     "command": "setup",                                                                      │ │
+│ │     "duration": "1-5m",                                                                      │ │
+│ │     "outcome": "ok"                                                                          │ │
+│ │   }                                                                                          │ │
+│ │ }                                                                                            │ │
+│ │ {                                                                                            │ │
+│ │   "distinct_id": "<a random id made on this machine>",                                       │ │
+│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │
+│                                                                                                  │
+│  ● No, keep it off    ○ Yes, send anonymous counts                                               │
+│                                                                                                  │
+│ [←/→] choose   [↑/↓] scroll   [Enter] confirm   [q] quit                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯

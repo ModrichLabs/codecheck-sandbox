@@ -1,0 +1,30 @@
+╭ CodeCheck Sandbox setup ─────────────────────────────────────────────────────────────────────────╮
+│ ✓ Welcome          │ Host network                                                                │
+│ · Platform         │                                                                             │
+│ · Components       │ · fcjail user                                                               │
+│ ✓ Your details     │ ✗ Review tap cc-tap0                                                        │
+│ ✗ Host network     │ · Firewall rules (nftables)                                                 │
+│ · Guest build      │ · Egress proxy service                                                      │
+│ · Verify           │                                                                             │
+│ · Summary          │ ╭ ✗ Review tap cc-tap0 failed ────────────────────────────────────────────╮ │
+│                    │ │ Cause: host-tap: privilege login expired                                │ │
+│                    │ │                                                                         │ │
+│                    │ │ Fix: The privilege login ran out. Press r to retry; you'll get asked    │ │
+│                    │ │ for your password again.                                                │ │
+│                    │ ╰─────────────────────────────────────────────────────────────────────────╯ │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │                                                                             │
+│                    │ [r] retry   [q] quit                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
