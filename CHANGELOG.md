@@ -12,8 +12,7 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
 ### Added
 
 - The `codecheck-sandbox` command tree, with `--version` and a `version`
-  command. The lifecycle commands `rebuild` and `uninstall` exist but report
-  "not implemented".
+  command. The `uninstall` command exists but reports "not implemented".
 - Global flags `--yes`, `--dry-run`, `--plain`, `--debug` and `--no-telemetry`.
 - `review <path|url>` runs a CodeCheck review inside the sandbox, with `--pr`,
   `--base`, `--budget`, and `--cwe` and `--prompt` to focus it. It shows live
@@ -27,6 +26,8 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
   any failure. `doctor --bundle` writes a redacted support bundle.
 - Every command now logs to `~/.local/state/codecheck-sandbox/log/`, with the
   API key redacted; `--debug` copies the log to the terminal.
+- `rebuild`, which builds the guest image again; `--commit` picks another
+  CodeCheck commit, kept in `config.toml` once the build succeeds.
 - `selftest`, which boots a VM that tries every way out of the sandbox, and
   `canary`, a small paid review of a planted SQL injection that checks reviews
   work end to end.

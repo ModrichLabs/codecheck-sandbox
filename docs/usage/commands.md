@@ -28,7 +28,7 @@ already parse, but no command acts on them yet.
 | `selftest`  | Works   | Boots a VM and tries each way out of the sandbox; every probe must fail to get out (see below)   |
 | `canary`    | Works   | Reviews a small, known-vulnerable sample (budget US$5) to confirm reviews work end to end        |
 | `review`    | Works   | Reviews a repository inside a fresh VM (see below)                                               |
-| `rebuild`   | Planned | Rebuilds the guest image, for example `rebuild --commit <sha>` for another CodeCheck commit      |
+| `rebuild`   | Works   | Rebuilds the guest image, for example `rebuild --commit <sha>` for another CodeCheck commit      |
 | `uninstall` | Planned | Removes everything setup installed; see [uninstall](uninstall.md)                                |
 | `telemetry` | Works   | `telemetry on`, `off` or `status`; see [privacy and telemetry](privacy-and-telemetry.md)         |
 

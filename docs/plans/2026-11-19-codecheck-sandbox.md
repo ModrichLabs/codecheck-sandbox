@@ -1491,7 +1491,14 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     this plan) into raw bidi overrides; `internal/repocheck` now fails the build
     on any raw bidi control. **For M15:** check doas and run0 reviews for real
     (the keep-alive must outlast an hour-long run before `cc-launch clean`).
-- [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
+- [x] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
+  - _Done:_ It takes the `guest-image` step from the same `SetupHost`, wraps it
+    so its first check fails (the check after Apply runs for real), and runs it
+    through the engine with the usual confirm, password handover, lock and
+    manifest. `--commit` takes only a full hash (40 or 64 hex characters); the
+    build and its stamp use it, and `config.toml` keeps it only after a
+    successful build, so a commit that fails to fetch leaves the old one in
+    place. It refuses root, like setup.
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.

@@ -69,7 +69,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 		newSelftestCommand(env, &opts),
 		newCanaryCommand(env, &opts),
 		newReviewCommand(env, &opts),
-		stub("rebuild", "Rebuild the guest image, for example for a new CodeCheck commit"),
+		newRebuildCommand(env, &opts),
 		stub("uninstall", "Remove everything setup installed"),
 		newTelemetryCommand(env, &opts),
 		hidden(newProxyCommand()),
