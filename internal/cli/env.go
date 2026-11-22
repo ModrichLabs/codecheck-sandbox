@@ -26,6 +26,19 @@ type Env struct {
 	// Sandbox opens the sandbox for review and selftest; nil means the
 	// real one (newSandbox). Tests pass a fake.
 	Sandbox func(Env, Options) (Sandbox, error)
+	// Setup opens the host for setup; nil means the real one
+	// (newSetupHost). Tests pass fake steps, manifest and lock.
+	Setup func(Env, Options) (*SetupHost, error)
+	// EUID holds the effective user id; setup refuses root.
+	EUID int
+}
+
+// OpenSetup returns the host to set up.
+func (e Env) OpenSetup(o Options) (*SetupHost, error) {
+	if e.Setup != nil {
+		return e.Setup(e, o)
+	}
+	return newSetupHost(e, o)
 }
 
 // Sandbox runs reviews and selftests (review.Pipeline, behind cc-launch).
@@ -60,6 +73,7 @@ func ProcessEnv() Env {
 		Home:    home,
 		TTY:     term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()),
 		In:      os.Stdin,
+		EUID:    os.Geteuid(),
 	}
 }
 

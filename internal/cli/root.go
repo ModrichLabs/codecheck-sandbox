@@ -64,7 +64,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 	f.BoolVar(&opts.NoTelemetry, "no-telemetry", false, "send no usage or error reports, whatever the settings say")
 
 	root.AddCommand(
-		stub("setup", "Guide this machine through setup, step by step"),
+		newSetupCommand(env, &opts),
 		stub("doctor", "Check every part of the setup and report problems"),
 		newSelftestCommand(env, &opts),
 		newCanaryCommand(env, &opts),

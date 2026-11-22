@@ -1345,7 +1345,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
 
 ## M13. Commands (`internal/cli`)
 
-- [ ] `setup`: builds the step list (phases from spec §7) and runs it through
+- [x] `setup`: builds the step list (phases from spec §7) and runs it through
       the engine, with the TUI or plain mode. `--yes` takes its answers from
       flags, `config.toml` and `CODECHECK_API_KEY`, and fails fast when anything
       goes missing. **Test:** a full dry run on a fake host prints every planned
@@ -1355,6 +1355,34 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     `--kernel FILE`, still checked against `pins.Kernel.SHA256`; a file with any
     other hash gets refused. **Tests:** a failing download suggests the flag; a
     matching file installs; a mismatched file gets refused.
+  - _Done:_ **`internal/setup`** assembles the steps for setup, doctor and
+    uninstall: platform checks, the new **components step** (`distro`: probes
+    one tool per package, installs only the missing ones, records only those as
+    created, and `Undo` removes recorded names that pass `CheckName`), the host
+    steps and the guest steps. Its dry-run test on a bare fake host reaches all
+    18 steps past the platform checks (14 planned, 4 not needed there) and runs
+    no command that writes; it caught that `setup.Deps` must pass hostnet's
+    `Executable` through. **Guest:** `PinnedSources.KernelFile` (`--kernel`)
+    copies a file only when it matches the pin; a failed download wraps
+    `ErrKernelUnavailable` with a hint at the flag. The build and its stamp
+    follow the chosen CodeCheck commit (`WantStamp(…, commit)`; `config.toml`
+    or, later, `rebuild --commit`). **The command:** it refuses root, applies
+    `--budget` and `--reports-dir`, and checks `--kernel`. On a terminal it asks
+    "Your details" (`tui.DetailsForm`) and then, if consent resolves to `Ask`,
+    shows the consent screen; Ctrl+C at either stops before anything changes.
+    `--yes`, plain mode and pipes take the key from `CODECHECK_API_KEY` and fail
+    before any step without it (a dry run needs none). It saves `config.toml`,
+    builds the steps through `cli.SetupHost` (fakes in tests: steps, manifest
+    store, lock), takes the footprint lock (absent before the first install),
+    and runs the engine on `tui.App` or `tui.RunPlain`. Created items merge into
+    the manifest even when a step fails, so uninstall finds them. A clean run
+    ends with the selftest. `step_finished` events reach telemetry through a
+    per-command event sink, captured after the command once consent is settled.
+    **Real check:** `setup --dry-run --plain` on this laptop passed every
+    platform check and printed the components, jail user, jailer folder, rules,
+    NetworkManager and tap plans, then stopped at the ufw check, which needs
+    root to read ufw's rules and had no terminal for the password. **For M15:**
+    a real interactive setup.
 - [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.
       **Tests:** healthy and drifted fake hosts.

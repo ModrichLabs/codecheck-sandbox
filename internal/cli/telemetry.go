@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,12 @@ func wrapTree(c *cobra.Command, name string, opts *Options, newClient ClientFact
 	}
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		start := time.Now()
+		sink := &eventSink{}
+		base := cmd.Context()
+		if base == nil {
+			base = context.Background()
+		}
+		cmd.SetContext(context.WithValue(base, sinkKey{}, sink))
 		err := run(cmd, args)
 		client := newClient(*opts)
 		client.Capture(telemetry.CommandRun{
@@ -45,6 +52,9 @@ func wrapTree(c *cobra.Command, name string, opts *Options, newClient ClientFact
 			Duration:   telemetry.DurationBandOf(time.Since(start)),
 			CLIVersion: telemetry.Version(buildinfo.Version),
 		})
+		for _, e := range sink.take() {
+			client.Capture(e)
+		}
 		if err != nil && !errors.Is(err, step.ErrDeclined) {
 			client.Capture(telemetry.NewException(err, ""))
 		}
@@ -54,6 +64,30 @@ func wrapTree(c *cobra.Command, name string, opts *Options, newClient ClientFact
 		}
 		client.Flush(ctx)
 		return err
+	}
+}
+
+// eventSink collects the events a command records while it runs. The
+// wrapper captures them after the command, once consent is known.
+type eventSink struct {
+	mu     sync.Mutex
+	events []telemetry.Event
+}
+
+type sinkKey struct{}
+
+func (s *eventSink) take() []telemetry.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.events
+}
+
+// recordEvent hands e to the running command's sink, if any.
+func recordEvent(ctx context.Context, e telemetry.Event) {
+	if s, ok := ctx.Value(sinkKey{}).(*eventSink); ok {
+		s.mu.Lock()
+		s.events = append(s.events, e)
+		s.mu.Unlock()
 	}
 }
 

@@ -17,8 +17,9 @@ import (
 func testEnv() Env {
 	return Env{
 		FS:      system.NewMemFS(),
-		Environ: map[string]string{"HOME": "/home/u"},
+		Environ: map[string]string{"HOME": "/home/u", "USER": "u"},
 		Home:    "/home/u",
+		EUID:    1000,
 	}
 }
 
