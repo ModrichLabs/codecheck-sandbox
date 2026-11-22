@@ -146,7 +146,7 @@ func shellQuote(s string) string {
 }
 
 // visible spells out control characters, invalid bytes and bidirectional
-// overrides (\x1b, ‮), so the preview shows every byte that will run
+// overrides (\x1b, \u202e), so the preview shows every byte that will run
 // or go on disk, and none of them acts on the terminal.
 func visible(s string) string {
 	var b strings.Builder
