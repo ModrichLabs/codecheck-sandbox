@@ -14,7 +14,7 @@ const idComponents = "components"
 
 func init() { telemetry.RegisterStepIDs(idComponents) }
 
-// probes names the tools that show a package is in place, whatever the
+// probes names the tools that show a package got installed, whatever the
 // distro calls the package.
 var probes = map[Package][]string{
 	Nftables:      {"nft"},
@@ -36,7 +36,7 @@ type ComponentsDeps struct {
 
 // ComponentsStep installs the packages setup needs (spec §7, step 3) that
 // the host lacks, and records only those, so uninstall never removes a
-// package that was there before.
+// package setup found already installed.
 func ComponentsStep(d ComponentsDeps) step.Step { return components{d} }
 
 type components struct{ d ComponentsDeps }

@@ -28,9 +28,9 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
   API key redacted; `--debug` copies the log to the terminal.
 - `rebuild`, which builds the guest image again; `--commit` picks another
   CodeCheck commit, kept in `config.toml` once the build succeeds.
-- `uninstall`, which removes what setup recorded creating and leaves what was
-  there before; `--purge` also removes the reports, the work folder and the
-  build cache.
+- `uninstall`, which removes what setup recorded creating and leaves what setup
+  found; `--purge` also removes the reports, the work folder and the build
+  cache.
 - `selftest`, which boots a VM that tries every way out of the sandbox, and
   `canary`, a small paid review of a planted SQL injection that checks reviews
   work end to end.

@@ -55,7 +55,7 @@ type SetupHost struct {
 	// RemoveManifest deletes the manifest after a clean uninstall.
 	RemoveManifest func(context.Context) error
 	// Exists and UserExists feed uninstall's footprint scan; a path that
-	// exists but can't be read (a root-only folder) counts as present.
+	// exists but won't open (a root-only folder) counts as present.
 	Exists     func(path string) bool
 	UserExists func(name string) bool
 }
@@ -78,13 +78,17 @@ func newSetupHost(env Env, _ Options) (*SetupHost, error) {
 	if err != nil {
 		return nil, err
 	}
+	me, err := user.Current() // the real account; $USER can go stale or get forged
+	if err != nil {
+		return nil, fmt.Errorf("finding your account: %w", err)
+	}
 	cacheBase := env.Environ["XDG_CACHE_HOME"]
 	if !filepath.IsAbs(cacheBase) {
 		cacheBase = filepath.Join(env.Home, ".cache")
 	}
 	return &SetupHost{
 		Deps: setup.Deps{
-			Platform: platform.DefaultEnv(), Family: family, Root: priv, User: env.Environ["USER"],
+			Platform: platform.DefaultEnv(), Family: family, Root: priv, User: me.Username,
 			FS: system.OSFS{}, Look: system.LookTool,
 			GuestInit: filepath.Join(filepath.Dir(exe), "cc-guestinit"),
 			Cache:     filepath.Join(cacheBase, "codecheck-sandbox", "build"),
@@ -317,12 +321,21 @@ func saveManifest(ctx context.Context, host *SetupHost, created []step.Item) err
 
 // verifySandbox runs the selftest after a setup.
 func verifySandbox(cmd *cobra.Command, env Env, opts *Options) error {
+	ports, err := selftestPorts(cmd.Context(), env, nil, cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
 	sb, err := env.OpenSandbox(*opts)
 	if err != nil {
 		return err
 	}
+	stop, err := sb.Login(cmd.Context())
+	if err != nil {
+		return err
+	}
+	defer stop()
 	res, err := runVerify(cmd, env, opts, "selftest", func(ctx context.Context, status func(review.Status), console io.Writer) (review.RunResult, error) {
-		return sb.Selftest(ctx, nil, status, console)
+		return sb.Selftest(ctx, ports, status, console)
 	})
 	if err != nil {
 		return err

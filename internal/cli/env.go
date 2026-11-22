@@ -33,6 +33,9 @@ type Env struct {
 	Setup func(Env, Options) (*SetupHost, error)
 	// EUID holds the effective user id; setup refuses root.
 	EUID int
+	// ListeningPorts lists the host ports the selftest should probe; nil
+	// adds none (tests).
+	ListeningPorts func(context.Context) []int
 	// OpenLog opens the command's log through the redactor (logging.New);
 	// nil logs nothing, as in tests.
 	OpenLog func(debug bool, red *system.Redactor) (*slog.Logger, io.Closer, error)
@@ -48,6 +51,10 @@ func (e Env) OpenSetup(o Options) (*SetupHost, error) {
 
 // Sandbox runs reviews and selftests (review.Pipeline, behind cc-launch).
 type Sandbox interface {
+	// Login asks for the password where the sudoers rule can't help (doas,
+	// run0). Callers run it before any full-screen interface takes the
+	// terminal, and call stop when the run ends.
+	Login(ctx context.Context) (stop func(), err error)
 	Review(ctx context.Context, o review.Options, status func(review.Status), console io.Writer) (review.RunResult, error)
 	Selftest(ctx context.Context, ports []int, status func(review.Status), console io.Writer) (review.RunResult, error)
 }
@@ -81,6 +88,7 @@ func ProcessEnv() Env {
 		EUID:    os.Geteuid(),
 	}
 	env := e
+	env.ListeningPorts = func(ctx context.Context) []int { return listeningPorts(ctx, system.ExecRunner{}) }
 	env.OpenLog = func(debug bool, red *system.Redactor) (*slog.Logger, io.Closer, error) {
 		return logging.New(logging.Options{Dir: env.LogDir(), Redactor: red, Debug: debug})
 	}

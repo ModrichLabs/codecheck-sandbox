@@ -354,7 +354,7 @@ func TestBuildCleansUpAFailedBoot(t *testing.T) {
 }
 
 // rebuild --commit and config.toml pick the CodeCheck commit; the stamp must
-// follow it, so the image step sees a rebuild is due.
+// follow it, so the image step sees a rebuild falls due.
 func TestWantStampFollowsTheCodeCheckCommit(t *testing.T) {
 	b, _, _, _ := buildRig(t)
 	pinned, _ := WantStamp(b.GuestInit, b.CACert, "")

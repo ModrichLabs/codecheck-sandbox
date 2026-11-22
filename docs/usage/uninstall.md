@@ -5,6 +5,14 @@ codecheck-sandbox uninstall          # keeps your reports
 codecheck-sandbox uninstall --purge  # also deletes reports, the work folder and the build cache
 ```
 
+`--purge` removes only the report folders reviews made (each holds a
+`summary.json`), then the reports folder if that leaves it empty; anything else
+you keep there stays.
+
+```sh
+
+```
+
 Setup records everything it creates in a root-owned manifest. `uninstall` lists
 what it will remove, asks you to confirm, and then reverses each step in the
 opposite order:

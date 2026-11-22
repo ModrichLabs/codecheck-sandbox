@@ -82,7 +82,7 @@ func wrapTree(c *cobra.Command, name string, env Env, opts *Options, newClient C
 }
 
 // eventSink collects the events a command records while it runs. The
-// wrapper captures them after the command, once consent is known.
+// wrapper captures them after the command, once consent has settled.
 type eventSink struct {
 	mu     sync.Mutex
 	events []telemetry.Event

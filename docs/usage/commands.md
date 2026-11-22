@@ -70,7 +70,7 @@ codecheck-sandbox review <path|url> [--pr N | --base REF] [--prompt TEXT] [--cwe
   break, gets refused rather than trimmed.
 - **Budget:** `--budget 10` stops the review at US$10. The default comes from
   `budget_usd` in `config.toml` (US$25 unless setup changed it), and the most a
-  review may take is US$1,000.
+  review may take comes to US$1,000.
 
 The tool clones a fresh copy on the host, strips git hooks and configuration
 from it, and gives the VM a read-only copy. While the review runs, the screen

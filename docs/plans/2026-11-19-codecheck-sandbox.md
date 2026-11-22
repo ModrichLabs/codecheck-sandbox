@@ -20,9 +20,21 @@ _Updated 2026-11-22._
   (`config.toml`, `telemetry`, `review` with `--cwe` and `--prompt`, `selftest`,
   `canary`, `setup` with the components step and `--kernel`, `doctor` and
   `--bundle`, `rebuild`, `uninstall` with its footprint scan, and the log in
-  every command). Next: `/code-review medium`, then the pull request, then M14
-  (docs). Untested until M15: a real interactive setup, review and uninstall,
-  and doas or run0 hosts.
+  every command). `/code-review medium` found 10 issues, all fixed test-first:
+  `uninstall --purge` ran `RemoveAll` on the reports folder, which `~` or
+  `/home` could name (now the reports folder must sit inside the home, and the
+  purge removes only folders holding a `summary.json`); doas and run0 prompted
+  for the password under the running review screen (now `Sandbox.Login` runs
+  before any screen); the selftest silently dropped ports, even `--port` ones,
+  past 15 (now the user's come first, with a warning for any listening port left
+  out); setup's closing selftest skipped the listening ports; the sudoers
+  account came from `$USER` (now `user.Current`); the canary accepted CWE-893
+  for CWE-89 (now a word boundary); the bundle listed sizes from before
+  redaction and ignored `--out` without `--bundle`; `telemetry on` claimed
+  reports went out under `DO_NOT_TRACK`; `listeningPorts` missed `*%iface` and
+  IPv4-mapped addresses; and some comments broke E-Prime. Next: the pull
+  request, then M14 (docs). Untested until M15: a real interactive setup, review
+  and uninstall, and doas or run0 hosts.
 - **M12 notes:** `/code-review medium` found 10 issues; 9 fixed test-first (a
   short terminal crashed on the 15-step host phase; a network failure in the key
   check stuck; Ctrl+C did nothing on the consent screen; the keep-alive outlived
@@ -1375,7 +1387,7 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     and runs the engine on `tui.App` or `tui.RunPlain`. Created items merge into
     the manifest even when a step fails, so uninstall finds them. A clean run
     ends with the selftest. `step_finished` events reach telemetry through a
-    per-command event sink, captured after the command once consent is settled.
+    per-command event sink, captured after the command once consent has settled.
     **Real check:** `setup --dry-run --plain` on this laptop passed every
     platform check and printed the components, jail user, jailer folder, rules,
     NetworkManager and tap plans, then stopped at the ufw check, which needs

@@ -93,7 +93,7 @@ func copyPinned(src, dest, sha string) error {
 	}
 	if got, err := fileSHA256(tmp); err != nil || got != sha { // it changed while copying
 		os.Remove(tmp)
-		return fmt.Errorf("--kernel %s changed while being copied", src)
+		return fmt.Errorf("--kernel %s changed during the copy", src)
 	}
 	return os.Rename(tmp, dest)
 }

@@ -53,7 +53,7 @@ func (s *realSandbox) pipeline(status func(review.Status), console io.Writer) (*
 // login asks for the password first where the sudoers rule can't help:
 // doas and run0 never read it (M9), so their -n would fail. sudo and sudo-rs
 // run cc-launch without a password through the rule.
-func (s *realSandbox) login(ctx context.Context) (stop func(), err error) {
+func (s *realSandbox) Login(ctx context.Context) (stop func(), err error) {
 	if s.tool.Kind == system.ToolSudo || s.tool.Kind == system.ToolSudoRS {
 		return func() {}, nil
 	}
@@ -75,11 +75,6 @@ func (s *realSandbox) Review(ctx context.Context, o review.Options, status func(
 	if err != nil {
 		return review.RunResult{}, err
 	}
-	stop, err := s.login(ctx)
-	if err != nil {
-		return review.RunResult{}, err
-	}
-	defer stop()
 	return p.Review(ctx, o)
 }
 
@@ -88,10 +83,5 @@ func (s *realSandbox) Selftest(ctx context.Context, ports []int, status func(rev
 	if err != nil {
 		return review.RunResult{}, err
 	}
-	stop, err := s.login(ctx)
-	if err != nil {
-		return review.RunResult{}, err
-	}
-	defer stop()
 	return p.Selftest(ctx, ports)
 }

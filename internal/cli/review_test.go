@@ -23,10 +23,17 @@ type fakeSandbox struct {
 	// targetGit notes, for each review, whether the target held a git
 	// repository while the run went on.
 	targetGit []bool
+	order     []string // login, review or selftest, stop
+}
+
+func (f *fakeSandbox) Login(context.Context) (func(), error) {
+	f.order = append(f.order, "login")
+	return func() { f.order = append(f.order, "stop") }, nil
 }
 
 func (f *fakeSandbox) Review(ctx context.Context, o review.Options, status func(review.Status), console io.Writer) (review.RunResult, error) {
 	f.reviews = append(f.reviews, o)
+	f.order = append(f.order, "review")
 	_, statErr := os.Stat(filepath.Join(o.Source.Target, ".git"))
 	f.targetGit = append(f.targetGit, statErr == nil)
 	status(review.Status{State: review.StatePreparing, Started: time.Now()})

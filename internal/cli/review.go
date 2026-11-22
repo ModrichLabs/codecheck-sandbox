@@ -57,6 +57,11 @@ func newReviewCommand(env Env, opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			stop, err := sb.Login(cmd.Context())
+			if err != nil {
+				return err
+			}
+			defer stop()
 			var res review.RunResult
 			if env.TTY && !opts.Plain {
 				res, err = reviewScreen(cmd.Context(), sb, o)

@@ -34,6 +34,9 @@ func addBundleFlags(cmd *cobra.Command, env Env, opts *Options) {
 	run := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if !bundle {
+			if out != "" {
+				return errors.New("--out names the bundle's file; pass --bundle with it")
+			}
 			return run(cmd, args)
 		}
 		return writeBundle(cmd, env, opts, out)
@@ -71,6 +74,9 @@ func writeBundle(cmd *cobra.Command, env Env, opts *Options, dest string) error 
 	files = append(files, bundleFile{name: "versions.txt", body: []byte(versionsText(env))},
 		bundleFile{name: "environment.txt", body: []byte(environmentText(env))})
 
+	for i := range files {
+		files[i].body = []byte(redactBundle(string(files[i].body), env.Home))
+	}
 	fmt.Fprintln(out, "The support bundle holds, with API keys and your home folder's path removed:")
 	for _, f := range files {
 		fmt.Fprintf(out, "  %s (%d bytes)\n", f.name, len(f.body))
@@ -79,7 +85,7 @@ func writeBundle(cmd *cobra.Command, env Env, opts *Options, dest string) error 
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
 	for _, f := range files {
-		body := []byte(redactBundle(string(f.body), env.Home))
+		body := f.body
 		h := &tar.Header{Name: f.name, Mode: 0o600, Size: int64(len(body)), ModTime: time.Now().UTC(), Typeflag: tar.TypeReg}
 		if err := tw.WriteHeader(h); err != nil {
 			return err

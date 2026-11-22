@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,19 +51,19 @@ func newSelftestCommand(env Env, opts *Options) *cobra.Command {
 					return fmt.Errorf("--port %d: want 1 to 65535", p)
 				}
 			}
-			all := slices.Clone(ports)
-			if env.Sandbox == nil { // the real host: add what it listens on
-				all = append(all, listeningPorts(cmd.Context(), system.ExecRunner{})...)
-			}
-			slices.Sort(all)
-			all = slices.Compact(all)
-			if len(all) > maxProbePorts {
-				all = all[:maxProbePorts]
+			all, err := selftestPorts(cmd.Context(), env, ports, cmd.ErrOrStderr())
+			if err != nil {
+				return err
 			}
 			sb, err := env.OpenSandbox(*opts)
 			if err != nil {
 				return err
 			}
+			stop, err := sb.Login(cmd.Context())
+			if err != nil {
+				return err
+			}
+			defer stop()
 			res, err := runVerify(cmd, env, opts, "selftest", func(ctx context.Context, status func(review.Status), console io.Writer) (review.RunResult, error) {
 				return sb.Selftest(ctx, all, status, console)
 			})
@@ -87,6 +88,46 @@ func newSelftestCommand(env Env, opts *Options) *cobra.Command {
 	return cmd
 }
 
+// selftestPorts gathers the ports a selftest probes: the user's first, then
+// the host's listening ports up to the cap, with a warning for any left out.
+func selftestPorts(ctx context.Context, env Env, user []int, warn io.Writer) ([]int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var listening []int
+	if env.ListeningPorts != nil {
+		listening = env.ListeningPorts(ctx)
+	}
+	return probePorts(user, listening, warn)
+}
+
+// probePorts keeps every user port (refusing more than the cap) and fills
+// the rest with listening ports, naming those that didn't fit.
+func probePorts(user, listening []int, warn io.Writer) ([]int, error) {
+	out := slices.Clone(user)
+	slices.Sort(out)
+	out = slices.Compact(out)
+	if len(out) > maxProbePorts {
+		return nil, fmt.Errorf("--port: at most %d ports", maxProbePorts)
+	}
+	var dropped []string
+	for _, p := range listening {
+		switch {
+		case slices.Contains(out, p):
+		case len(out) < maxProbePorts:
+			out = append(out, p)
+		default:
+			dropped = append(dropped, strconv.Itoa(p))
+		}
+	}
+	if len(dropped) > 0 {
+		fmt.Fprintf(warn, "selftest: %d listening port(s) stay untested (the probe takes %d): %s\n",
+			len(dropped), maxProbePorts, strings.Join(dropped, ", "))
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 // listeningPorts lists the TCP ports the host listens on where the VM could
 // reach them: on every address, or on the tap's. Loopback and other
 // interfaces' addresses stay out, and so does the proxy's own port.
@@ -107,6 +148,7 @@ func listeningPorts(ctx context.Context, r system.Runner) []int {
 			continue
 		}
 		host, port := strings.Trim(local[:i], "[]"), local[i+1:]
+		host, _, _ = strings.Cut(host, "%") // *%tap0, fe80::1%eth0
 		n, err := strconv.Atoi(port)
 		if err != nil || n == proxyPort {
 			continue
@@ -115,11 +157,11 @@ func listeningPorts(ctx context.Context, r system.Runner) []int {
 			ports = append(ports, n)
 			continue
 		}
-		addr, err := netip.ParseAddr(strings.Split(host, "%")[0])
+		addr, err := netip.ParseAddr(host)
 		if err != nil {
 			continue
 		}
-		if addr.IsUnspecified() || addr == tapHost {
+		if addr = addr.Unmap(); addr.IsUnspecified() || addr == tapHost {
 			ports = append(ports, n)
 		}
 	}
@@ -148,6 +190,11 @@ func newCanaryCommand(env Env, opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			stop, err := sb.Login(cmd.Context())
+			if err != nil {
+				return err
+			}
+			defer stop()
 			o := review.Options{Source: review.Source{Target: src}, BudgetUSD: "5", CWEs: []int{canaryCWE}}
 			res, err := runVerify(cmd, env, opts, "canary", func(ctx context.Context, status func(review.Status), console io.Writer) (review.RunResult, error) {
 				return sb.Review(ctx, o, status, console)
@@ -175,7 +222,7 @@ func canaryVerdict(res review.RunResult) error {
 	if err != nil {
 		return fmt.Errorf("canary: %w", err)
 	}
-	if !strings.Contains(string(b), fmt.Sprintf("CWE-%d", canaryCWE)) {
+	if !regexp.MustCompile(fmt.Sprintf(`\bCWE-%d\b`, canaryCWE)).Match(b) {
 		return fmt.Errorf("canary: the report misses the planted CWE-%d; see %s", canaryCWE, res.ReportDir)
 	}
 	return nil

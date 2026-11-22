@@ -63,17 +63,17 @@ func newTelemetryCommand(env Env, opts *Options) *cobra.Command {
 		},
 		&cobra.Command{
 			Use: "on", Short: "Send anonymous usage and error reports", Args: cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error { return setTelemetry(cmd, env, true) },
+			RunE: func(cmd *cobra.Command, _ []string) error { return setTelemetry(cmd, env, opts, true) },
 		},
 		&cobra.Command{
 			Use: "off", Short: "Stop reporting, and delete the install id and any queued events", Args: cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error { return setTelemetry(cmd, env, false) },
+			RunE: func(cmd *cobra.Command, _ []string) error { return setTelemetry(cmd, env, opts, false) },
 		},
 	)
 	return cmd
 }
 
-func setTelemetry(cmd *cobra.Command, env Env, on bool) error {
+func setTelemetry(cmd *cobra.Command, env Env, opts *Options, on bool) error {
 	c, _, err := env.LoadConfig()
 	if err != nil {
 		return err
@@ -86,7 +86,14 @@ func setTelemetry(cmd *cobra.Command, env Env, on bool) error {
 		if _, err := telemetry.EnsureInstallID(env.FS, env.TelemetryDir()); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Telemetry on: anonymous counts go to PostHog (US) under a random id made on this machine.")
+		switch {
+		case env.Environ["DO_NOT_TRACK"] != "" && env.Environ["DO_NOT_TRACK"] != "0":
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Telemetry stored as on, but DO_NOT_TRACK keeps it off while set.")
+		case opts.NoTelemetry:
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Telemetry stored as on; runs with --no-telemetry still send nothing.")
+		default:
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Telemetry on: anonymous counts go to PostHog (US) under a random id made on this machine.")
+		}
 		return err
 	}
 	if err := telemetry.Forget(env.FS, env.TelemetryDir()); err != nil {

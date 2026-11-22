@@ -90,7 +90,7 @@ func TestBundleNeverHoldsTheKey(t *testing.T) {
 	}
 }
 
-// A failing doctor still writes the bundle; that's when people need one.
+// A failing doctor still writes the bundle; people need one most then.
 func TestBundleOnAFailingHost(t *testing.T) {
 	env := doctorEnv(checkStep{id: "host-rules", title: "Firewall rules", status: step.Status{Detail: "differ"}})
 	dest := filepath.Join(t.TempDir(), "b.tar.gz")

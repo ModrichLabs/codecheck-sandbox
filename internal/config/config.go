@@ -169,10 +169,17 @@ func ExpandReportsDir(s, home string) (string, error) {
 	if s == "/" {
 		return "", errors.New("pick a folder of your own, such as ~/codecheck-reports")
 	}
-	// Inside the user's own home always passes, even where homes live
-	// under a system folder (/var/home on Fedora Silverblue).
-	if h := filepath.Clean(home); filepath.IsAbs(h) && h != "/" && (s == h || strings.HasPrefix(s, h+"/")) {
-		return s, nil
+	if h := filepath.Clean(home); filepath.IsAbs(h) && h != "/" {
+		// The home folder itself, or anything above it, would mix reports
+		// with everything else there, and uninstall --purge works on it.
+		if s == h || strings.HasPrefix(h, s+"/") {
+			return "", errors.New("pick a folder inside your home, such as ~/codecheck-reports")
+		}
+		// Inside the home always passes, even where homes live under a
+		// system folder (/var/home on Fedora Silverblue).
+		if strings.HasPrefix(s, h+"/") {
+			return s, nil
+		}
 	}
 	for _, d := range systemDirs {
 		if s == d || strings.HasPrefix(s, d+"/") {

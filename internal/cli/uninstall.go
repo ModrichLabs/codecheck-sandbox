@@ -100,16 +100,45 @@ func runUninstall(cmd *cobra.Command, env Env, opts *Options, purge bool) error 
 		if b := env.Environ["XDG_CACHE_HOME"]; filepath.IsAbs(b) {
 			cache = filepath.Join(b, "codecheck-sandbox")
 		}
-		for _, dir := range []string{reports, filepath.Join(env.Home, "codecheck-work"), cache} {
-			if dir == "" {
-				continue
-			}
+		if err := purgeReports(reports); err != nil {
+			return err
+		}
+		for _, dir := range []string{filepath.Join(env.Home, "codecheck-work"), cache} {
 			if err := os.RemoveAll(dir); err != nil {
 				return err
 			}
 		}
 	}
 	fmt.Fprintln(out, "Uninstalled.")
+	return nil
+}
+
+// purgeReports removes the report folders reviews made (each holds a
+// summary.json), then the reports folder itself only if that leaves it
+// empty. Anything else in it stays, whatever the folder.
+func purgeReports(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		run := filepath.Join(dir, e.Name())
+		if fi, err := os.Lstat(filepath.Join(run, "summary.json")); err == nil && fi.Mode().IsRegular() {
+			if err := os.RemoveAll(run); err != nil {
+				return err
+			}
+		}
+	}
+	os.Remove(dir) // only succeeds when empty
 	return nil
 }
 

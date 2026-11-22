@@ -97,6 +97,7 @@ func TestUninstallPurgeTakesTheReports(t *testing.T) {
 	for _, d := range []string{"codecheck-reports/r1", "codecheck-work/x", ".cache/codecheck-sandbox/build"} {
 		os.MkdirAll(filepath.Join(env.Home, d), 0o700)
 	}
+	os.WriteFile(filepath.Join(env.Home, "codecheck-reports/r1/summary.json"), []byte("{}"), 0o600)
 	if _, err := runIn(t, env, "uninstall", "--yes", "--purge"); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestUninstallFallsBackToTheFootprint(t *testing.T) {
 		t.Errorf("host-rules undid %v", rules)
 	}
 	if slices.Contains(rules, "/var/lib/codecheck-sandbox/rules.sha256") {
-		t.Error("the scan undid a file that isn't there")
+		t.Error("the scan undid a file the host lacks")
 	}
 	if len(h.undone["host-jail-user"]) != 1 || len(h.undone["host-tap-service"]) < 2 {
 		t.Errorf("undone = %v", h.undone)
