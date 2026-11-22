@@ -20,5 +20,11 @@ var Guest embed.FS
 // signs Ubuntu's cloud image SHA256SUMS. Its fingerprint matches
 // pins.Ubuntu.KeyFingerprint; a test checks that.
 //
+// Canary holds the deliberately vulnerable sample the canary command
+// reviews (canary/app.py, with a SQL injection).
+//
+//go:embed canary
+var Canary embed.FS
+
 //go:embed keys/ubuntu-cloudimage.asc
 var UbuntuCloudImageKey []byte

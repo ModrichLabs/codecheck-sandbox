@@ -1378,9 +1378,23 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     stores the refusal and deletes the id and the queue. **Logging** moves to
     the setup task, where it first matters, behind an injectable opener, since
     tests run on an in-memory home.
-- [ ] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
+- [x] `selftest`, `canary`: a run in mode `selftest`, or the canary repo (from
       `assets/canary/`) as a review with budget 5; then their pass rules (spec
       §7). **Tests** use fixture outputs.
+  - _Done:_ The spec gives no exact pass rules, so these got set here.
+    **Selftest** passes only with outcome `ok` and no failed probe; a failed
+    probe names itself in the error. Extra probe ports come from `--port`
+    (repeatable) plus `listeningPorts`, which reads `ss -Hltn` and keeps ports
+    bound to every address or to the tap's (`172.16.0.1`), dropping loopback,
+    other interfaces' addresses and the proxy's 3180; at most 15, since the
+    guest's settings value holds 128 bytes. **Canary:** `assets/canary/` holds a
+    Flask `app.py` with a planted SQL injection and a README; the command writes
+    it to `~/codecheck-work/canary-src` as a one-commit git repository (git with
+    no hooks, no system or global config and no signing), reviews it with budget
+    5 and `--cwe 89`, then removes it. It passes only when the outcome reads
+    `ok`, the proxy refused nothing (so Claude Code needs no host beyond the
+    allowlist), and `report.md` names CWE-89. Both commands share `runVerify`:
+    the review screen on a terminal, or status lines otherwise.
 - [x] `review`: flags from spec §8. **Test:** argument validation, and the
       run-folder contents.
   - **`--prompt` and `--cwe`** (maintainer's choice, 2026-11-22: add both).
@@ -1419,10 +1433,10 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     state. **Exit code:** 0 only for `ok`; any other outcome prints the summary
     and report folder, then exits 1 (`ErrOutcome`). Usage docs and the changelog
     cover the flags, the CWE priority and the exit code. **Found on the way:**
-    writing files had decoded three `\u202e` escapes (two in M12's code, one in this
-    plan) into raw bidi overrides; `internal/repocheck` now fails the build on
-    any raw bidi control. **For M15:** check doas and run0 reviews for real (the
-    keep-alive must outlast an hour-long run before `cc-launch clean`).
+    writing files had decoded three `\u202e` escapes (two in M12's code, one in
+    this plan) into raw bidi overrides; `internal/repocheck` now fails the build
+    on any raw bidi control. **For M15:** check doas and run0 reviews for real
+    (the keep-alive must outlast an hour-long run before `cc-launch clean`).
 - [ ] `rebuild [--commit SHA]`: runs `GuestBuildStep`, forced.
 - [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after

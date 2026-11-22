@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -18,10 +20,15 @@ type fakeSandbox struct {
 	selftests [][]int
 	result    review.RunResult
 	err       error
+	// targetGit notes, for each review, whether the target held a git
+	// repository while the run went on.
+	targetGit []bool
 }
 
 func (f *fakeSandbox) Review(ctx context.Context, o review.Options, status func(review.Status), console io.Writer) (review.RunResult, error) {
 	f.reviews = append(f.reviews, o)
+	_, statErr := os.Stat(filepath.Join(o.Source.Target, ".git"))
+	f.targetGit = append(f.targetGit, statErr == nil)
 	status(review.Status{State: review.StatePreparing, Started: time.Now()})
 	status(review.Status{State: review.StateDone, Started: time.Now()})
 	return f.result, f.err
