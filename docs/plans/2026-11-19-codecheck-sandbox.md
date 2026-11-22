@@ -1383,9 +1383,20 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     NetworkManager and tap plans, then stopped at the ufw check, which needs
     root to read ufw's rules and had no terminal for the password. **For M15:**
     a real interactive setup.
-- [ ] `doctor`: runs every `Check`, the image and rule hashes, and template
+- [x] `doctor`: runs every `Check`, the image and rule hashes, and template
       drift (re-render, then compare with installed). It exits 1 on any failure.
       **Tests:** healthy and drifted fake hosts.
+  - _Done:_ The hashes and drift already live in the steps' own checks: the host
+    steps compare each installed file with what they render now, and
+    `guest-image` checks `images.sha256` and the stamp. So `doctor` runs every
+    step's `Check` from the same `SetupHost` as setup and shows
+    `tui.DoctorView`, coloured only on a terminal (`colorprofile`). A check that
+    reports the privilege login lapsed gets one password prompt, then a retry; a
+    check that can't run shows "couldn't check" and counts as failed. **Real
+    check:** on this laptop, before setup, it passed the platform checks, listed
+    every missing part, and exited 1. **For M14:** the `environment_profile`
+    telemetry event (spec §11, once per setup and doctor) still needs building
+    from the platform facts.
 - [ ] `doctor --bundle [--out FILE]`: list the files first, then write a
       redacted `.tar.gz` of recent logs, `doctor` output, versions and the
       environment profile. **Test:** a planted key in a log never reaches the

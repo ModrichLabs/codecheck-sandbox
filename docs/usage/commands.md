@@ -24,7 +24,7 @@ already parse, but no command acts on them yet.
 | ----------- | ------- | ------------------------------------------------------------------------------------------------ |
 | `version`   | Works   | Prints `codecheck-sandbox <version>`                                                             |
 | `setup`     | Works   | The guided setup wizard; see [setup](setup.md)                                                   |
-| `doctor`    | Planned | Runs every check, the image and firewall hashes and a config-drift check; exits 1 on any failure |
+| `doctor`    | Works   | Runs every check, the image and firewall hashes and a config-drift check; exits 1 on any failure |
 | `selftest`  | Works   | Boots a VM and tries each way out of the sandbox; every probe must fail to get out (see below)   |
 | `canary`    | Works   | Reviews a small, known-vulnerable sample (budget US$5) to confirm reviews work end to end        |
 | `review`    | Works   | Reviews a repository inside a fresh VM (see below)                                               |

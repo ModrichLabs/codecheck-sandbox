@@ -65,7 +65,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 
 	root.AddCommand(
 		newSetupCommand(env, &opts),
-		stub("doctor", "Check every part of the setup and report problems"),
+		newDoctorCommand(env, &opts),
 		newSelftestCommand(env, &opts),
 		newCanaryCommand(env, &opts),
 		newReviewCommand(env, &opts),

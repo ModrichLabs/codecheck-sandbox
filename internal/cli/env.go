@@ -98,3 +98,12 @@ func (e Env) LoadConfig() (c config.Config, found bool, err error) {
 func (e Env) SaveConfig(c config.Config) error {
 	return config.Save(e.FS, e.ConfigPath(), e.Home, c)
 }
+
+// environList returns the environment as KEY=value lines.
+func (e Env) environList() []string {
+	out := make([]string, 0, len(e.Environ))
+	for k, v := range e.Environ {
+		out = append(out, k+"="+v)
+	}
+	return out
+}

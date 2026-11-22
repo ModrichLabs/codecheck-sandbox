@@ -12,8 +12,8 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
 ### Added
 
 - The `codecheck-sandbox` command tree, with `--version` and a `version`
-  command. The lifecycle commands `doctor`, `rebuild` and `uninstall` exist but
-  report "not implemented".
+  command. The lifecycle commands `rebuild` and `uninstall` exist but report
+  "not implemented".
 - Global flags `--yes`, `--dry-run`, `--plain`, `--debug` and `--no-telemetry`.
 - `review <path|url>` runs a CodeCheck review inside the sandbox, with `--pr`,
   `--base`, `--budget`, and `--cwe` and `--prompt` to focus it. It shows live
@@ -22,6 +22,9 @@ then, a minor bump may break compatibility, and a patch bump only fixes.
   image, each root step shown before it runs, then the selftest. `--yes` runs
   unattended with the key from `CODECHECK_API_KEY`, `--dry-run` changes nothing,
   and `--kernel FILE` supplies the guest kernel if its download fails.
+- `doctor`, which runs every setup check, including the installed files against
+  what setup renders and the guest image's hashes, as a table, and exits 1 on
+  any failure.
 - `selftest`, which boots a VM that tries every way out of the sandbox, and
   `canary`, a small paid review of a planted SQL injection that checks reviews
   work end to end.
