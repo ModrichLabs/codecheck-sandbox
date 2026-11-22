@@ -15,22 +15,23 @@
 | `--version`      | Print the version                                                        |
 | `-h`, `--help`   | Show help for any command                                                |
 
-The `--yes`, `--dry-run`, `--plain`, `--debug` and `--no-telemetry` flags
-already parse, but no command acts on them yet.
+`--yes` answers every question with yes, `--dry-run` changes nothing, `--plain`
+prints lines instead of the full-screen interface, `--debug` copies the log to
+the terminal, and `--no-telemetry` sends nothing whatever the settings say.
 
 ## Commands
 
-| Command     | Status  | What it does                                                                                     |
-| ----------- | ------- | ------------------------------------------------------------------------------------------------ |
-| `version`   | Works   | Prints `codecheck-sandbox <version>`                                                             |
-| `setup`     | Works   | The guided setup wizard; see [setup](setup.md)                                                   |
-| `doctor`    | Works   | Runs every check, the image and firewall hashes and a config-drift check; exits 1 on any failure |
-| `selftest`  | Works   | Boots a VM and tries each way out of the sandbox; every probe must fail to get out (see below)   |
-| `canary`    | Works   | Reviews a small, known-vulnerable sample (budget US$5) to confirm reviews work end to end        |
-| `review`    | Works   | Reviews a repository inside a fresh VM (see below)                                               |
-| `rebuild`   | Works   | Rebuilds the guest image, for example `rebuild --commit <sha>` for another CodeCheck commit      |
-| `uninstall` | Planned | Removes everything setup installed; see [uninstall](uninstall.md)                                |
-| `telemetry` | Works   | `telemetry on`, `off` or `status`; see [privacy and telemetry](privacy-and-telemetry.md)         |
+| Command     | Status | What it does                                                                                     |
+| ----------- | ------ | ------------------------------------------------------------------------------------------------ |
+| `version`   | Works  | Prints `codecheck-sandbox <version>`                                                             |
+| `setup`     | Works  | The guided setup wizard; see [setup](setup.md)                                                   |
+| `doctor`    | Works  | Runs every check, the image and firewall hashes and a config-drift check; exits 1 on any failure |
+| `selftest`  | Works  | Boots a VM and tries each way out of the sandbox; every probe must fail to get out (see below)   |
+| `canary`    | Works  | Reviews a small, known-vulnerable sample (budget US$5) to confirm reviews work end to end        |
+| `review`    | Works  | Reviews a repository inside a fresh VM (see below)                                               |
+| `rebuild`   | Works  | Rebuilds the guest image, for example `rebuild --commit <sha>` for another CodeCheck commit      |
+| `uninstall` | Works  | Removes everything setup installed; see [uninstall](uninstall.md)                                |
+| `telemetry` | Works  | `telemetry on`, `off` or `status`; see [privacy and telemetry](privacy-and-telemetry.md)         |
 
 A hidden `proxy` command also exists. The `codecheck-proxy` systemd service runs
 it; you never need to run it yourself.

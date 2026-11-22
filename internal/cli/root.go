@@ -2,17 +2,12 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ModrichLabs/codecheck-sandbox/internal/buildinfo"
 )
-
-// ErrNotImplemented marks a command that exists in the tree but has no
-// behaviour yet.
-var ErrNotImplemented = errors.New("not implemented")
 
 // Options holds the global flags shared by every subcommand.
 type Options struct {
@@ -70,7 +65,7 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 		newCanaryCommand(env, &opts),
 		newReviewCommand(env, &opts),
 		newRebuildCommand(env, &opts),
-		stub("uninstall", "Remove everything setup installed"),
+		newUninstallCommand(env, &opts),
 		newTelemetryCommand(env, &opts),
 		hidden(newProxyCommand()),
 		&cobra.Command{
@@ -89,16 +84,6 @@ func NewRootCommandEnv(env Env, newClient ClientFactory) *cobra.Command {
 
 func versionLine() string {
 	return buildinfo.Name + " " + buildinfo.Version + "\n"
-}
-
-func stub(name, short string) *cobra.Command {
-	return &cobra.Command{
-		Use:   name,
-		Short: short,
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("%s: %w", name, ErrNotImplemented)
-		},
-	}
 }
 
 func hidden(c *cobra.Command) *cobra.Command {

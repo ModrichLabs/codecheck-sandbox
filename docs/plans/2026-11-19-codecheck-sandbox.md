@@ -1499,9 +1499,29 @@ Breakdown (2026-11-21; nothing installed Firecracker and the jailer yet, and
     build and its stamp use it, and `config.toml` keeps it only after a
     successful build, so a commit that fails to fetch leaves the old one in
     place. It refuses root, like setup.
-- [ ] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
+- [x] `uninstall [--purge]`: reverses the manifest, falls back to a footprint
       scan, and keeps reports unless `--purge`. **Test:** a fake host after
       setup ends clean, and adopted items stay.
+  - _Done:_ It lists what goes and what stays (`tui.Uninstall` on a terminal,
+    lines otherwise), needs Enter or `--yes` (`--dry-run` only lists), takes the
+    lock, and runs `step.Uninstall` on the same screens as setup. Each step gets
+    only its created items, so adopted packages and users stay. A clean run
+    removes the manifest (root `rm -f`); a failed step leaves it, so a second
+    run picks up the rest. `--purge` also removes the reports folder,
+    `~/codecheck-work` and the build cache. **Footprint scan:**
+    `hostnet.Footprint` and `guest.Footprint` list every item their steps can
+    create, from the same config the steps use, and a test in each hands those
+    items to the owning step's `Undo` and checks it acts on each one. Without a
+    manifest, uninstall keeps the files and folders that exist (a root-only
+    folder counts), the jail user if it exists, and a step's units, tap or table
+    when that step left a file; never a package, and never a firewalld or ufw
+    allowance, since nothing then says setup added them. **Test hygiene:** once
+    commands did real work, old tests that built the real environment had
+    started writing a log into the home folder of whoever ran them (I removed
+    the one this laptop got); a `TestMain` in `internal/cli` and
+    `cmd/codecheck-sandbox` now points `HOME` and the XDG folders at a temporary
+    folder and sets `DO_NOT_TRACK`, and those tests use the fake environment or
+    a failure that touches nothing.
 - [x] `config.go`: `~/.config/codecheck-sandbox/config.toml` (budget, reports
       folder, CodeCheck commit, telemetry). Hand-rolled TOML subset or
       `BurntSushi/toml`. **Test:** round trip.

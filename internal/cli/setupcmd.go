@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +52,12 @@ type SetupHost struct {
 	// Elevate does it in plain mode. Either may stay nil.
 	Handover *tui.Handover
 	Elevate  step.ElevateFunc
+	// RemoveManifest deletes the manifest after a clean uninstall.
+	RemoveManifest func(context.Context) error
+	// Exists and UserExists feed uninstall's footprint scan; a path that
+	// exists but can't be read (a root-only folder) counts as present.
+	Exists     func(path string) bool
+	UserExists func(name string) bool
 }
 
 // lockWait bounds how long setup waits for a running review to finish.
@@ -104,6 +112,21 @@ func newSetupHost(env Env, _ Options) (*SetupHost, error) {
 		},
 		Handover: tui.NewHandover(tool, system.ExecRunner{}),
 		Elevate:  plainLogin(env, tool),
+		RemoveManifest: func(ctx context.Context) error {
+			res, err := priv.Run(ctx, system.Cmd{Name: "rm", Args: []string{"-f", "--", step.ManifestPath}, Root: true})
+			if err == nil && res.Code != 0 {
+				err = fmt.Errorf("removing the manifest: %s", strings.TrimSpace(string(res.Stderr)))
+			}
+			return err
+		},
+		Exists: func(p string) bool {
+			_, err := os.Lstat(p)
+			return err == nil || errors.Is(err, fs.ErrPermission)
+		},
+		UserExists: func(name string) bool {
+			_, err := user.Lookup(name)
+			return err == nil
+		},
 	}, nil
 }
 

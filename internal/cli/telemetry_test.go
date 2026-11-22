@@ -23,7 +23,7 @@ func runWith(t *testing.T, args ...string) (*fakeClient, Options, error) {
 	t.Helper()
 	fake := &fakeClient{}
 	var seen Options
-	cmd := NewRootCommandWith(func(o Options) telemetry.Client {
+	cmd := NewRootCommandEnv(testEnv(), func(o Options) telemetry.Client {
 		seen = o
 		return fake
 	})
@@ -50,9 +50,9 @@ func TestEveryCommandRecordsCommandRunAndFlushes(t *testing.T) {
 }
 
 func TestAFailingCommandAlsoSendsAnException(t *testing.T) {
-	fake, _, err := runWith(t, "doctor")
+	fake, _, err := runWith(t, "review", "x", "--budget", "lots")
 	if err == nil {
-		t.Fatal("doctor: want the not-implemented error")
+		t.Fatal("review with a bad budget: want an error")
 	}
 	if len(fake.events) != 2 || fake.flushes != 1 {
 		t.Fatalf("events = %+v, flushes = %d", fake.events, fake.flushes)
